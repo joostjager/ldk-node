@@ -92,11 +92,6 @@ rand = "0.8.5"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 tokio = { version = "1.37", default-features = false, features = [ "rt-multi-thread", "time", "sync", "macros" ] }
 esplora-client = { version = "0.12", default-features = false, features = ["tokio", "async-https-rustls"] }
-
-# FIXME: This was  introduced to decouple the `bdk_esplora` and
-# `lightning-transaction-sync` APIs. We should drop it as part of the upgrade
-# to LDK 0.2.
-esplora-client_0_11 = { package = "esplora-client", version = "0.11", default-features = false, features = ["tokio", "async-https-rustls"] }
 electrum-client = { version = "0.23.1", default-features = true }
 libc = "0.2"
 uniffi = { version = "0.28.3", features = ["build"], optional = true }
