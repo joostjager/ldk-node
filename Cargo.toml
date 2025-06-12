@@ -38,6 +38,7 @@ default = []
 #lightning-block-sync = { version = "0.1.0", features = ["rest-client", "rpc-client", "tokio"] }
 #lightning-transaction-sync = { version = "0.1.0", features = ["esplora-async-https", "time", "electrum"] }
 #lightning-liquidity = { version = "0.1.0", features = ["std"] }
+#lightning-macros = { version = "0.1.0" }
 
 #lightning = { git = "https://github.com/lightningdevkit/rust-lightning", branch = "main", features = ["std"] }
 #lightning-types = { git = "https://github.com/lightningdevkit/rust-lightning", branch = "main" }
@@ -49,6 +50,7 @@ default = []
 #lightning-block-sync = { git = "https://github.com/lightningdevkit/rust-lightning", branch = "main", features = ["rest-client", "rpc-client", "tokio"] }
 #lightning-transaction-sync = { git = "https://github.com/lightningdevkit/rust-lightning", branch = "main", features = ["esplora-async-https", "electrum", "time"] }
 #lightning-liquidity = { git = "https://github.com/lightningdevkit/rust-lightning", branch = "main" }
+#lightning-macros = { git = "https://github.com/lightningdevkit/rust-lightning", branch = "main" }
 
 lightning = { git = "https://github.com/lightningdevkit/rust-lightning", rev = "d67bd0fa4b62f80cd3d354e7db0ebe9f5d6954f6", features = ["std"] }
 lightning-types = { git = "https://github.com/lightningdevkit/rust-lightning", rev = "d67bd0fa4b62f80cd3d354e7db0ebe9f5d6954f6" }
@@ -72,6 +74,7 @@ lightning-macros = { git = "https://github.com/lightningdevkit/rust-lightning", 
 #lightning-block-sync = { path = "../rust-lightning/lightning-block-sync", features = ["rest-client", "rpc-client", "tokio"] }
 #lightning-transaction-sync = { path = "../rust-lightning/lightning-transaction-sync", features = ["esplora-async-https", "electrum", "time"] }
 #lightning-liquidity = { path = "../rust-lightning/lightning-liquidity", features = ["std"] }
+#lightning-macros = { path = "../rust-lightning/lightning-macros" }
 
 bdk_chain = { version = "0.23.0", default-features = false, features = ["std"] }
 bdk_esplora = { version = "0.22.0", default-features = false, features = ["async-https-rustls", "tokio"]}
