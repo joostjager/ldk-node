@@ -47,6 +47,7 @@ pub(crate) type ChainMonitor = chainmonitor::ChainMonitor<
 	Arc<OnchainFeeEstimator>,
 	Arc<Logger>,
 	Arc<DynStore>,
+	Arc<KeysManager>,
 >;
 
 pub(crate) type PeerManager = lightning::ln::peer_handler::PeerManager<
@@ -57,6 +58,7 @@ pub(crate) type PeerManager = lightning::ln::peer_handler::PeerManager<
 	Arc<Logger>,
 	Arc<NodeCustomMessageHandler<Arc<Logger>>>,
 	Arc<KeysManager>,
+	Arc<ChainMonitor>,
 >;
 
 pub(crate) type LiquidityManager =
