@@ -27,7 +27,7 @@ use lightning::ln::msgs::UnsignedGossipMessage;
 use lightning::ln::script::ShutdownScript;
 use lightning::sign::{
 	ChangeDestinationSource, EntropySource, InMemorySigner, KeysManager, NodeSigner, OutputSpender,
-	Recipient, SignerProvider, SpendableOutputDescriptor,
+	PeerStorageKey, Recipient, SignerProvider, SpendableOutputDescriptor,
 };
 
 use lightning::util::message_signing;
@@ -804,6 +804,10 @@ impl NodeSigner for WalletKeysManager {
 
 	fn get_inbound_payment_key(&self) -> ExpandedKey {
 		self.inner.get_inbound_payment_key()
+	}
+
+	fn get_peer_storage_key(&self) -> PeerStorageKey {
+		self.inner.get_peer_storage_key()
 	}
 
 	fn sign_invoice(

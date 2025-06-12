@@ -47,7 +47,7 @@ use lightning::routing::router::DefaultRouter;
 use lightning::routing::scoring::{
 	ProbabilisticScorer, ProbabilisticScoringDecayParameters, ProbabilisticScoringFeeParameters,
 };
-use lightning::sign::EntropySource;
+use lightning::sign::{EntropySource, NodeSigner};
 
 use lightning::util::persist::{
 	read_channel_monitors, CHANNEL_MANAGER_PERSISTENCE_KEY,
@@ -1241,15 +1241,6 @@ fn build_with_store_internal(
 
 	let runtime = Arc::new(RwLock::new(None));
 
-	// Initialize the ChainMonitor
-	let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
-		Some(Arc::clone(&chain_source)),
-		Arc::clone(&tx_broadcaster),
-		Arc::clone(&logger),
-		Arc::clone(&fee_estimator),
-		Arc::clone(&kv_store),
-	));
-
 	// Initialize the KeysManager
 	let cur_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map_err(|e| {
 		log_error!(logger, "Failed to get current time: {}", e);
@@ -1263,6 +1254,19 @@ fn build_with_store_internal(
 		cur_time.subsec_nanos(),
 		Arc::clone(&wallet),
 		Arc::clone(&logger),
+	));
+
+	let peer_storage_key = keys_manager.get_peer_storage_key();
+
+	// Initialize the ChainMonitor
+	let chain_monitor: Arc<ChainMonitor> = Arc::new(chainmonitor::ChainMonitor::new(
+		Some(Arc::clone(&chain_source)),
+		Arc::clone(&tx_broadcaster),
+		Arc::clone(&logger),
+		Arc::clone(&fee_estimator),
+		Arc::clone(&kv_store),
+		Arc::clone(&keys_manager),
+		peer_storage_key,
 	));
 
 	// Initialize the network graph, scorer, and router
@@ -1515,6 +1519,7 @@ fn build_with_store_internal(
 				as Arc<dyn RoutingMessageHandler + Sync + Send>,
 			onion_message_handler: Arc::clone(&onion_messenger),
 			custom_message_handler,
+			send_only_message_handler: Arc::clone(&chain_monitor),
 		},
 		GossipSync::Rapid(_) => MessageHandler {
 			chan_handler: Arc::clone(&channel_manager),
@@ -1522,6 +1527,7 @@ fn build_with_store_internal(
 				as Arc<dyn RoutingMessageHandler + Sync + Send>,
 			onion_message_handler: Arc::clone(&onion_messenger),
 			custom_message_handler,
+			send_only_message_handler: Arc::clone(&chain_monitor),
 		},
 		GossipSync::None => {
 			unreachable!("We must always have a gossip sync!");
