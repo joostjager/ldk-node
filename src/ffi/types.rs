@@ -126,9 +126,8 @@ impl From<LdkAmount> for OfferAmount {
 	fn from(ldk_amount: LdkAmount) -> Self {
 		match ldk_amount {
 			LdkAmount::Bitcoin { amount_msats } => OfferAmount::Bitcoin { amount_msats },
-			LdkAmount::Currency { iso4217_code, amount } => OfferAmount::Currency {
-				iso4217_code: iso4217_code.iter().map(|&b| b as char).collect(),
-				amount,
+			LdkAmount::Currency { iso4217_code, amount } => {
+				OfferAmount::Currency { iso4217_code: iso4217_code.as_str().to_owned(), amount }
 			},
 		}
 	}
