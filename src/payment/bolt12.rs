@@ -20,7 +20,8 @@ use lightning::ln::channelmanager::{PaymentId, Retry};
 use lightning::offers::offer::{Amount, Offer as LdkOffer, Quantity};
 use lightning::offers::parse::Bolt12SemanticError;
 use lightning::routing::router::RouteParametersConfig;
-use lightning::util::string::UntrustedString;
+
+use lightning_types::string::UntrustedString;
 
 use rand::RngCore;
 
