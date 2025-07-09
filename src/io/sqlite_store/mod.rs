@@ -10,7 +10,8 @@ use crate::io::utils::check_namespace_key_validity;
 
 use lightning::io;
 use lightning::util::persist::KVStore;
-use lightning::util::string::PrintableString;
+
+use lightning_types::string::PrintableString;
 
 use rusqlite::{named_params, Connection};
 

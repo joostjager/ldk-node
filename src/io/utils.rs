@@ -32,8 +32,9 @@ use lightning::util::persist::{
 	SCORER_PERSISTENCE_PRIMARY_NAMESPACE, SCORER_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use lightning::util::ser::{Readable, ReadableArgs, Writeable};
-use lightning::util::string::PrintableString;
 use lightning::util::sweep::{OutputSpendStatus, OutputSweeper};
+
+use lightning_types::string::PrintableString;
 
 use bdk_chain::indexer::keychain_txout::ChangeSet as BdkIndexerChangeSet;
 use bdk_chain::local_chain::ChangeSet as BdkLocalChainChangeSet;
