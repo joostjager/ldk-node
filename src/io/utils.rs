@@ -252,7 +252,7 @@ pub(crate) fn read_output_sweeper(
 		kv_store,
 		logger.clone(),
 	);
-	OutputSweeper::read(&mut reader, args).map_err(|e| {
+	OutputSweeper::read_with_kv_store_sync(&mut reader, args).map_err(|e| {
 		log_error!(logger, "Failed to deserialize OutputSweeper: {}", e);
 		std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to deserialize OutputSweeper")
 	})

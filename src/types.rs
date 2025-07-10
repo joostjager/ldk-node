@@ -26,9 +26,10 @@ use lightning::routing::router::DefaultRouter;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringFeeParameters};
 use lightning::sign::InMemorySigner;
 use lightning::util::persist::KVStoreSync;
+use lightning::util::persist::KVStoreSyncWrapper;
 use lightning::util::ser::{Readable, Writeable, Writer};
-use lightning::util::sweep::OutputSweeper;
 
+use lightning::util::sweep::OutputSweeper;
 use lightning_block_sync::gossip::{GossipVerifier, UtxoSource};
 
 use lightning_net_tokio::SocketDescriptor;
@@ -131,7 +132,7 @@ pub(crate) type Sweeper = OutputSweeper<
 	Arc<KeysManager>,
 	Arc<OnchainFeeEstimator>,
 	Arc<ChainSource>,
-	Arc<DynStore>,
+	KVStoreSyncWrapper<Arc<DynStore>>,
 	Arc<Logger>,
 	Arc<KeysManager>,
 >;

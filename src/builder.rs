@@ -1572,7 +1572,7 @@ fn build_with_store_internal(
 		Ok(output_sweeper) => Arc::new(output_sweeper),
 		Err(e) => {
 			if e.kind() == std::io::ErrorKind::NotFound {
-				Arc::new(OutputSweeper::new(
+				Arc::new(OutputSweeper::new_with_kv_store_sync(
 					channel_manager.current_best_block(),
 					Arc::clone(&tx_broadcaster),
 					Arc::clone(&fee_estimator),

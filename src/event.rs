@@ -1062,7 +1062,11 @@ where
 				}
 			},
 			LdkEvent::SpendableOutputs { outputs, channel_id } => {
-				match self.output_sweeper.track_spendable_outputs(outputs, channel_id, true, None) {
+				match self
+					.output_sweeper
+					.track_spendable_outputs(outputs, channel_id, true, None)
+					.await
+				{
 					Ok(_) => return Ok(()),
 					Err(_) => {
 						log_error!(self.logger, "Failed to track spendable outputs");

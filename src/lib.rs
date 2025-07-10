@@ -156,7 +156,7 @@ use lightning::ln::channelmanager::PaymentId;
 use lightning::ln::msgs::SocketAddress;
 use lightning::routing::gossip::NodeAlias;
 
-use lightning_background_processor::process_events_async;
+use lightning_background_processor::process_events_async_with_kv_store_sync;
 
 use bitcoin::secp256k1::PublicKey;
 
@@ -579,7 +579,7 @@ impl Node {
 		};
 
 		let handle = runtime.spawn(async move {
-			process_events_async(
+			process_events_async_with_kv_store_sync(
 				background_persister,
 				|e| background_event_handler.handle_event(e),
 				background_chain_mon,
