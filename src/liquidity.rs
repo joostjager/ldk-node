@@ -483,7 +483,7 @@ where
 						if token != Some(required) {
 							log_error!(
 								self.logger,
-								"Rejecting LSPS2 request {:?} from counterparty {} as the client provided an invalid token.", 
+								"Rejecting LSPS2 request {:?} from counterparty {} as the client provided an invalid token.",
 								request_id,
 								counterparty_node_id
 							);

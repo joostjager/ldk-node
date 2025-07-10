@@ -253,7 +253,7 @@ pub(crate) fn read_output_sweeper(
 		kv_store,
 		logger.clone(),
 	);
-	OutputSweeper::read(&mut reader, args).map_err(|e| {
+	OutputSweeper::read_with_kv_store_sync(&mut reader, args).map_err(|e| {
 		log_error!(logger, "Failed to deserialize OutputSweeper: {}", e);
 		std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to deserialize OutputSweeper")
 	})
@@ -277,81 +277,81 @@ pub(crate) fn migrate_deprecated_spendable_outputs<L: Deref>(
 where
 	L::Target: LdkLogger,
 {
-	let best_block = sweeper.current_best_block();
+	// let best_block = sweeper.current_best_block();
 
-	for stored_key in kv_store.list(
-		DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_PRIMARY_NAMESPACE,
-		DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_SECONDARY_NAMESPACE,
-	)? {
-		let mut reader = Cursor::new(kv_store.read(
-			DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_PRIMARY_NAMESPACE,
-			DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_SECONDARY_NAMESPACE,
-			&stored_key,
-		)?);
-		let output = DeprecatedSpendableOutputInfo::read(&mut reader).map_err(|e| {
-			log_error!(logger, "Failed to deserialize SpendableOutputInfo: {}", e);
-			std::io::Error::new(
-				std::io::ErrorKind::InvalidData,
-				"Failed to deserialize SpendableOutputInfo",
-			)
-		})?;
-		let descriptors = vec![output.descriptor.clone()];
-		let spend_delay = Some(best_block.height + 2);
-		sweeper
-			.track_spendable_outputs(descriptors, output.channel_id, true, spend_delay)
-			.map_err(|_| {
-				log_error!(logger, "Failed to track spendable outputs. Aborting migration, will retry in the future.");
-				std::io::Error::new(
-					std::io::ErrorKind::InvalidData,
-					"Failed to track spendable outputs. Aborting migration, will retry in the future.",
-				)
-			})?;
+	// for stored_key in kv_store.list(
+	// 	DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_PRIMARY_NAMESPACE,
+	// 	DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_SECONDARY_NAMESPACE,
+	// )? {
+	// 	let mut reader = Cursor::new(kv_store.read(
+	// 		DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_PRIMARY_NAMESPACE,
+	// 		DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_SECONDARY_NAMESPACE,
+	// 		&stored_key,
+	// 	)?);
+	// 	let output = DeprecatedSpendableOutputInfo::read(&mut reader).map_err(|e| {
+	// 		log_error!(logger, "Failed to deserialize SpendableOutputInfo: {}", e);
+	// 		std::io::Error::new(
+	// 			std::io::ErrorKind::InvalidData,
+	// 			"Failed to deserialize SpendableOutputInfo",
+	// 		)
+	// 	})?;
+	// 	let descriptors = vec![output.descriptor.clone()];
+	// 	let spend_delay = Some(best_block.height + 2);
+	// 	sweeper
+	// 		.track_spendable_outputs(descriptors, output.channel_id, true, spend_delay)
+	// 		.map_err(|_| {
+	// 			log_error!(logger, "Failed to track spendable outputs. Aborting migration, will retry in the future.");
+	// 			std::io::Error::new(
+	// 				std::io::ErrorKind::InvalidData,
+	// 				"Failed to track spendable outputs. Aborting migration, will retry in the future.",
+	// 			)
+	// 		})?;
 
-		if let Some(tracked_spendable_output) =
-			sweeper.tracked_spendable_outputs().iter().find(|o| o.descriptor == output.descriptor)
-		{
-			match tracked_spendable_output.status {
-				OutputSpendStatus::PendingInitialBroadcast { delayed_until_height } => {
-					if delayed_until_height == spend_delay {
-						kv_store.remove(
-							DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_PRIMARY_NAMESPACE,
-							DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_SECONDARY_NAMESPACE,
-							&stored_key,
-							false,
-						)?;
-					} else {
-						debug_assert!(false, "Unexpected status in OutputSweeper migration.");
-						log_error!(logger, "Unexpected status in OutputSweeper migration.");
-						return Err(std::io::Error::new(
-							std::io::ErrorKind::Other,
-							"Failed to migrate OutputSweeper state.",
-						));
-					}
-				},
-				_ => {
-					debug_assert!(false, "Unexpected status in OutputSweeper migration.");
-					log_error!(logger, "Unexpected status in OutputSweeper migration.");
-					return Err(std::io::Error::new(
-						std::io::ErrorKind::Other,
-						"Failed to migrate OutputSweeper state.",
-					));
-				},
-			}
-		} else {
-			debug_assert!(
-				false,
-				"OutputSweeper failed to track and persist outputs during migration."
-			);
-			log_error!(
-				logger,
-				"OutputSweeper failed to track and persist outputs during migration."
-			);
-			return Err(std::io::Error::new(
-				std::io::ErrorKind::Other,
-				"Failed to migrate OutputSweeper state.",
-			));
-		}
-	}
+	// 	if let Some(tracked_spendable_output) =
+	// 		sweeper.tracked_spendable_outputs().iter().find(|o| o.descriptor == output.descriptor)
+	// 	{
+	// 		match tracked_spendable_output.status {
+	// 			OutputSpendStatus::PendingInitialBroadcast { delayed_until_height } => {
+	// 				if delayed_until_height == spend_delay {
+	// 					kv_store.remove(
+	// 						DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_PRIMARY_NAMESPACE,
+	// 						DEPRECATED_SPENDABLE_OUTPUT_INFO_PERSISTENCE_SECONDARY_NAMESPACE,
+	// 						&stored_key,
+	// 						false,
+	// 					)?;
+	// 				} else {
+	// 					debug_assert!(false, "Unexpected status in OutputSweeper migration.");
+	// 					log_error!(logger, "Unexpected status in OutputSweeper migration.");
+	// 					return Err(std::io::Error::new(
+	// 						std::io::ErrorKind::Other,
+	// 						"Failed to migrate OutputSweeper state.",
+	// 					));
+	// 				}
+	// 			},
+	// 			_ => {
+	// 				debug_assert!(false, "Unexpected status in OutputSweeper migration.");
+	// 				log_error!(logger, "Unexpected status in OutputSweeper migration.");
+	// 				return Err(std::io::Error::new(
+	// 					std::io::ErrorKind::Other,
+	// 					"Failed to migrate OutputSweeper state.",
+	// 				));
+	// 			},
+	// 		}
+	// 	} else {
+	// 		debug_assert!(
+	// 			false,
+	// 			"OutputSweeper failed to track and persist outputs during migration."
+	// 		);
+	// 		log_error!(
+	// 			logger,
+	// 			"OutputSweeper failed to track and persist outputs during migration."
+	// 		);
+	// 		return Err(std::io::Error::new(
+	// 			std::io::ErrorKind::Other,
+	// 			"Failed to migrate OutputSweeper state.",
+	// 		));
+	// 	}
+	// }
 
 	Ok(())
 }
