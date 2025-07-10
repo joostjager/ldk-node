@@ -26,7 +26,7 @@ use ldk_node::{Builder, Event, NodeError};
 use lightning::ln::channelmanager::PaymentId;
 use lightning::routing::gossip::{NodeAlias, NodeId};
 use lightning::routing::router::RouteParametersConfig;
-use lightning::util::persist::KVStore;
+use lightning::util::persist::KVStoreSync;
 
 use lightning_invoice::{Bolt11InvoiceDescription, Description};
 
@@ -242,7 +242,7 @@ fn start_stop_reinit() {
 
 	let esplora_url = format!("http://{}", electrsd.esplora_url.as_ref().unwrap());
 
-	let test_sync_store: Arc<dyn KVStore + Sync + Send> =
+	let test_sync_store: Arc<dyn KVStoreSync + Sync + Send> =
 		Arc::new(TestSyncStore::new(config.node_config.storage_dir_path.clone().into()));
 
 	let sync_config = EsploraSyncConfig { background_sync_config: None };

@@ -8,7 +8,7 @@
 use crate::io::utils::check_namespace_key_validity;
 use bitcoin::hashes::{sha256, Hash, HashEngine, Hmac, HmacEngine};
 use lightning::io::{self, Error, ErrorKind};
-use lightning::util::persist::KVStore;
+use lightning::util::persist::KVStoreSync;
 use prost::Message;
 use rand::RngCore;
 #[cfg(test)]
@@ -127,7 +127,7 @@ impl VssStore {
 	}
 }
 
-impl KVStore for VssStore {
+impl KVStoreSync for VssStore {
 	fn read(
 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
 	) -> io::Result<Vec<u8>> {

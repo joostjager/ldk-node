@@ -9,7 +9,7 @@ use lightning::ln::functional_test_utils::{
 	connect_block, create_announced_chan_between_nodes, create_chanmon_cfgs, create_dummy_block,
 	create_network, create_node_cfgs, create_node_chanmgrs, send_payment,
 };
-use lightning::util::persist::{read_channel_monitors, KVStore, KVSTORE_NAMESPACE_KEY_MAX_LEN};
+use lightning::util::persist::{read_channel_monitors, KVStoreSync, KVSTORE_NAMESPACE_KEY_MAX_LEN};
 
 use lightning::events::ClosureReason;
 use lightning::util::test_utils;
@@ -29,7 +29,7 @@ pub(crate) fn random_storage_path() -> PathBuf {
 	temp_path
 }
 
-pub(crate) fn do_read_write_remove_list_persist<K: KVStore + RefUnwindSafe>(kv_store: &K) {
+pub(crate) fn do_read_write_remove_list_persist<K: KVStoreSync + RefUnwindSafe>(kv_store: &K) {
 	let data = [42u8; 32];
 
 	let primary_namespace = "testspace";
@@ -80,7 +80,7 @@ pub(crate) fn do_read_write_remove_list_persist<K: KVStore + RefUnwindSafe>(kv_s
 
 // Integration-test the given KVStore implementation. Test relaying a few payments and check that
 // the persisted data is updated the appropriate number of times.
-pub(crate) fn do_test_store<K: KVStore + Sync>(store_0: &K, store_1: &K) {
+pub(crate) fn do_test_store<K: KVStoreSync + Sync>(store_0: &K, store_1: &K) {
 	let chanmon_cfgs = create_chanmon_cfgs(2);
 	let mut node_cfgs = create_node_cfgs(2, &chanmon_cfgs);
 	let chain_mon_0 = test_utils::TestChainMonitor::new(
