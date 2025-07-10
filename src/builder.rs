@@ -170,17 +170,17 @@ pub enum BuildError {
 	InvalidNodeAlias,
 	/// We failed to read data from the [`KVStore`].
 	///
-	/// [`KVStore`]: lightning::util::persist::KVStore
+	/// [`KVStore`]: lightning::util::persist::KVStoreSync
 	ReadFailed,
 	/// We failed to write data to the [`KVStore`].
 	///
-	/// [`KVStore`]: lightning::util::persist::KVStore
+	/// [`KVStore`]: lightning::util::persist::KVStoreSync
 	WriteFailed,
 	/// We failed to access the given `storage_dir_path`.
 	StoragePathAccessFailed,
 	/// We failed to setup our [`KVStore`].
 	///
-	/// [`KVStore`]: lightning::util::persist::KVStore
+	/// [`KVStore`]: lightning::util::persist::KVStoreSync
 	KVStoreSetupFailed,
 	/// We failed to setup the onchain wallet.
 	WalletSetupFailed,

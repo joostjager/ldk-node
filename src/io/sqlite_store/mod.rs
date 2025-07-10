@@ -9,7 +9,7 @@
 use crate::io::utils::check_namespace_key_validity;
 
 use lightning::io;
-use lightning::util::persist::KVStore;
+use lightning::util::persist::KVStoreSync;
 
 use lightning_types::string::PrintableString;
 
@@ -130,7 +130,7 @@ impl SqliteStore {
 	}
 }
 
-impl KVStore for SqliteStore {
+impl KVStoreSync for SqliteStore {
 	fn read(
 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
 	) -> io::Result<Vec<u8>> {

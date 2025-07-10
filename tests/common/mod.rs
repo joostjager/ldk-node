@@ -21,7 +21,7 @@ use ldk_node::{
 
 use lightning::ln::msgs::SocketAddress;
 use lightning::routing::gossip::NodeAlias;
-use lightning::util::persist::KVStore;
+use lightning::util::persist::KVStoreSync;
 use lightning::util::test_utils::TestStore;
 
 use lightning_invoice::{Bolt11InvoiceDescription, Description};
@@ -1130,7 +1130,7 @@ impl TestSyncStore {
 	}
 }
 
-impl KVStore for TestSyncStore {
+impl KVStoreSync for TestSyncStore {
 	fn read(
 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
 	) -> lightning::io::Result<Vec<u8>> {

@@ -25,7 +25,7 @@ use lightning::routing::gossip;
 use lightning::routing::router::DefaultRouter;
 use lightning::routing::scoring::{ProbabilisticScorer, ProbabilisticScoringFeeParameters};
 use lightning::sign::InMemorySigner;
-use lightning::util::persist::KVStore;
+use lightning::util::persist::KVStoreSync;
 use lightning::util::ser::{Readable, Writeable, Writer};
 use lightning::util::sweep::OutputSweeper;
 
@@ -38,7 +38,7 @@ use bitcoin::OutPoint;
 
 use std::sync::{Arc, Mutex};
 
-pub(crate) type DynStore = dyn KVStore + Sync + Send;
+pub(crate) type DynStore = dyn KVStoreSync + Sync + Send;
 
 pub(crate) type ChainMonitor = chainmonitor::ChainMonitor<
 	InMemorySigner,
