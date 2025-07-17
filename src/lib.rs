@@ -1343,7 +1343,7 @@ impl Node {
 					acc.trusted_peers_no_reserve.contains(&counterparty_node_id)
 				}) {
 					self.channel_manager
-						.force_close_without_broadcasting_txn(
+						.force_close_broadcasting_latest_txn(
 							&channel_details.channel_id,
 							&counterparty_node_id,
 							force_close_reason.unwrap_or_default(),
