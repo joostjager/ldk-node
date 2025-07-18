@@ -156,7 +156,10 @@ pub(crate) fn do_test_store<K: KVStore + Sync>(store_0: &K, store_1: &K) {
 	check_closed_event!(
 		nodes[0],
 		1,
-		ClosureReason::HolderForceClosed { broadcasted_latest_txn: Some(true) },
+		ClosureReason::HolderForceClosed {
+			broadcasted_latest_txn: Some(true),
+			message: "whoops".into()
+		},
 		[nodes[1].node.get_our_node_id()],
 		100000
 	);
