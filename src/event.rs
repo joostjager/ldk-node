@@ -545,7 +545,7 @@ where
 					Err(err) => {
 						log_error!(self.logger, "Failed to create funding transaction: {}", err);
 						self.channel_manager
-							.force_close_without_broadcasting_txn(
+							.force_close_broadcasting_latest_txn(
 								&temporary_channel_id,
 								&counterparty_node_id,
 								"Failed to create funding transaction".to_string(),
@@ -1084,7 +1084,7 @@ where
 						log_error!(self.logger, "Rejecting inbound announced channel from peer {} due to missing configuration: {}", counterparty_node_id, err);
 
 						self.channel_manager
-							.force_close_without_broadcasting_txn(
+							.force_close_broadcasting_latest_txn(
 								&temporary_channel_id,
 								&counterparty_node_id,
 								"Channel request rejected".to_string(),
@@ -1128,7 +1128,7 @@ where
 								required_amount_sats,
 							);
 							self.channel_manager
-								.force_close_without_broadcasting_txn(
+								.force_close_broadcasting_latest_txn(
 									&temporary_channel_id,
 									&counterparty_node_id,
 									"Channel request rejected".to_string(),
@@ -1145,7 +1145,7 @@ where
 							counterparty_node_id,
 						);
 						self.channel_manager
-							.force_close_without_broadcasting_txn(
+							.force_close_broadcasting_latest_txn(
 								&temporary_channel_id,
 								&counterparty_node_id,
 								"Channel request rejected".to_string(),

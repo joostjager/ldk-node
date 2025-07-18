@@ -145,18 +145,19 @@ pub(crate) fn do_test_store<K: KVStore + Sync>(store_0: &K, store_1: &K) {
 
 	// Force close because cooperative close doesn't result in any persisted
 	// updates.
+	let message = "Channel force-closed".to_owned();
 	nodes[0]
 		.node
 		.force_close_broadcasting_latest_txn(
 			&nodes[0].node.list_channels()[0].channel_id,
 			&nodes[1].node.get_our_node_id(),
-			"whoops".to_string(),
+			message.clone(),
 		)
 		.unwrap();
 	check_closed_event!(
 		nodes[0],
 		1,
-		ClosureReason::HolderForceClosed { broadcasted_latest_txn: Some(true) },
+		ClosureReason::HolderForceClosed { broadcasted_latest_txn: Some(true), message },
 		[nodes[1].node.get_our_node_id()],
 		100000
 	);

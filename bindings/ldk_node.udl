@@ -383,7 +383,7 @@ enum PaymentFailureReason {
 [Enum]
 interface ClosureReason {
 	CounterpartyForceClosed(UntrustedString peer_msg);
-	HolderForceClosed(boolean? broadcasted_latest_txn);
+	HolderForceClosed(boolean? broadcasted_latest_txn, string message);
 	LegacyCooperativeClosure();
 	CounterpartyInitiatedCooperativeClosure();
 	LocallyInitiatedCooperativeClosure();

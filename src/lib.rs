@@ -1316,35 +1316,16 @@ impl Node {
 			open_channels.iter().find(|c| c.user_channel_id == user_channel_id.0)
 		{
 			if force {
-				if self.config.anchor_channels_config.as_ref().map_or(false, |acc| {
-					acc.trusted_peers_no_reserve.contains(&counterparty_node_id)
-				}) {
-					self.channel_manager
-						.force_close_without_broadcasting_txn(
-							&channel_details.channel_id,
-							&counterparty_node_id,
-							force_close_reason.unwrap_or_default(),
-						)
-						.map_err(|e| {
-							log_error!(
-								self.logger,
-								"Failed to force-close channel to trusted peer: {:?}",
-								e
-							);
-							Error::ChannelClosingFailed
-						})?;
-				} else {
-					self.channel_manager
-						.force_close_broadcasting_latest_txn(
-							&channel_details.channel_id,
-							&counterparty_node_id,
-							force_close_reason.unwrap_or_default(),
-						)
-						.map_err(|e| {
-							log_error!(self.logger, "Failed to force-close channel: {:?}", e);
-							Error::ChannelClosingFailed
-						})?;
-				}
+				self.channel_manager
+					.force_close_broadcasting_latest_txn(
+						&channel_details.channel_id,
+						&counterparty_node_id,
+						force_close_reason.unwrap_or_default(),
+					)
+					.map_err(|e| {
+						log_error!(self.logger, "Failed to force-close channel: {:?}", e);
+						Error::ChannelClosingFailed
+					})?;
 			} else {
 				self.channel_manager
 					.close_channel(&channel_details.channel_id, &counterparty_node_id)
