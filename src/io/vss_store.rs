@@ -127,111 +127,111 @@ impl VssStore {
 	}
 }
 
-impl KVStoreSync for VssStore {
-	fn read(
-		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
-	) -> io::Result<Vec<u8>> {
-		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "read")?;
-		let request = GetObjectRequest {
-			store_id: self.store_id.clone(),
-			key: self.build_key(primary_namespace, secondary_namespace, key)?,
-		};
+// impl KVStoreSync for VssStore {
+// 	fn read(
+// 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
+// 	) -> io::Result<Vec<u8>> {
+// 		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "read")?;
+// 		let request = GetObjectRequest {
+// 			store_id: self.store_id.clone(),
+// 			key: self.build_key(primary_namespace, secondary_namespace, key)?,
+// 		};
 
-		let resp =
-			tokio::task::block_in_place(|| self.runtime.block_on(self.client.get_object(&request)))
-				.map_err(|e| {
-					let msg = format!(
-						"Failed to read from key {}/{}/{}: {}",
-						primary_namespace, secondary_namespace, key, e
-					);
-					match e {
-						VssError::NoSuchKeyError(..) => Error::new(ErrorKind::NotFound, msg),
-						_ => Error::new(ErrorKind::Other, msg),
-					}
-				})?;
-		// unwrap safety: resp.value must be always present for a non-erroneous VSS response, otherwise
-		// it is an API-violation which is converted to [`VssError::InternalServerError`] in [`VssClient`]
-		let storable = Storable::decode(&resp.value.unwrap().value[..]).map_err(|e| {
-			let msg = format!(
-				"Failed to decode data read from key {}/{}/{}: {}",
-				primary_namespace, secondary_namespace, key, e
-			);
-			Error::new(ErrorKind::Other, msg)
-		})?;
+// 		let resp =
+// 			tokio::task::block_in_place(|| self.runtime.block_on(self.client.get_object(&request)))
+// 				.map_err(|e| {
+// 					let msg = format!(
+// 						"Failed to read from key {}/{}/{}: {}",
+// 						primary_namespace, secondary_namespace, key, e
+// 					);
+// 					match e {
+// 						VssError::NoSuchKeyError(..) => Error::new(ErrorKind::NotFound, msg),
+// 						_ => Error::new(ErrorKind::Other, msg),
+// 					}
+// 				})?;
+// 		// unwrap safety: resp.value must be always present for a non-erroneous VSS response, otherwise
+// 		// it is an API-violation which is converted to [`VssError::InternalServerError`] in [`VssClient`]
+// 		let storable = Storable::decode(&resp.value.unwrap().value[..]).map_err(|e| {
+// 			let msg = format!(
+// 				"Failed to decode data read from key {}/{}/{}: {}",
+// 				primary_namespace, secondary_namespace, key, e
+// 			);
+// 			Error::new(ErrorKind::Other, msg)
+// 		})?;
 
-		Ok(self.storable_builder.deconstruct(storable)?.0)
-	}
+// 		Ok(self.storable_builder.deconstruct(storable)?.0)
+// 	}
 
-	fn write(
-		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
-	) -> io::Result<()> {
-		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "write")?;
-		let version = -1;
-		let storable = self.storable_builder.build(buf.to_vec(), version);
-		let request = PutObjectRequest {
-			store_id: self.store_id.clone(),
-			global_version: None,
-			transaction_items: vec![KeyValue {
-				key: self.build_key(primary_namespace, secondary_namespace, key)?,
-				version,
-				value: storable.encode_to_vec(),
-			}],
-			delete_items: vec![],
-		};
+// fn write(
+// 	&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
+// ) -> io::Result<()> {
+// 	check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "write")?;
+// 	let version = -1;
+// 	let storable = self.storable_builder.build(buf.to_vec(), version);
+// 	let request = PutObjectRequest {
+// 		store_id: self.store_id.clone(),
+// 		global_version: None,
+// 		transaction_items: vec![KeyValue {
+// 			key: self.build_key(primary_namespace, secondary_namespace, key)?,
+// 			version,
+// 			value: storable.encode_to_vec(),
+// 		}],
+// 		delete_items: vec![],
+// 	};
 
-		tokio::task::block_in_place(|| self.runtime.block_on(self.client.put_object(&request)))
-			.map_err(|e| {
-				let msg = format!(
-					"Failed to write to key {}/{}/{}: {}",
-					primary_namespace, secondary_namespace, key, e
-				);
-				Error::new(ErrorKind::Other, msg)
-			})?;
+// 		tokio::task::block_in_place(|| self.runtime.block_on(self.client.put_object(&request)))
+// 			.map_err(|e| {
+// 				let msg = format!(
+// 					"Failed to write to key {}/{}/{}: {}",
+// 					primary_namespace, secondary_namespace, key, e
+// 				);
+// 				Error::new(ErrorKind::Other, msg)
+// 			})?;
 
-		Ok(())
-	}
+// 		Ok(())
+// 	}
 
-	fn remove(
-		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, _lazy: bool,
-	) -> io::Result<()> {
-		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "remove")?;
-		let request = DeleteObjectRequest {
-			store_id: self.store_id.clone(),
-			key_value: Some(KeyValue {
-				key: self.build_key(primary_namespace, secondary_namespace, key)?,
-				version: -1,
-				value: vec![],
-			}),
-		};
+// 	fn remove(
+// 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, _lazy: bool,
+// 	) -> io::Result<()> {
+// 		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "remove")?;
+// 		let request = DeleteObjectRequest {
+// 			store_id: self.store_id.clone(),
+// 			key_value: Some(KeyValue {
+// 				key: self.build_key(primary_namespace, secondary_namespace, key)?,
+// 				version: -1,
+// 				value: vec![],
+// 			}),
+// 		};
 
-		tokio::task::block_in_place(|| self.runtime.block_on(self.client.delete_object(&request)))
-			.map_err(|e| {
-				let msg = format!(
-					"Failed to delete key {}/{}/{}: {}",
-					primary_namespace, secondary_namespace, key, e
-				);
-				Error::new(ErrorKind::Other, msg)
-			})?;
-		Ok(())
-	}
+// 		tokio::task::block_in_place(|| self.runtime.block_on(self.client.delete_object(&request)))
+// 			.map_err(|e| {
+// 				let msg = format!(
+// 					"Failed to delete key {}/{}/{}: {}",
+// 					primary_namespace, secondary_namespace, key, e
+// 				);
+// 				Error::new(ErrorKind::Other, msg)
+// 			})?;
+// 		Ok(())
+// 	}
 
-	fn list(&self, primary_namespace: &str, secondary_namespace: &str) -> io::Result<Vec<String>> {
-		check_namespace_key_validity(primary_namespace, secondary_namespace, None, "list")?;
+// 	fn list(&self, primary_namespace: &str, secondary_namespace: &str) -> io::Result<Vec<String>> {
+// 		check_namespace_key_validity(primary_namespace, secondary_namespace, None, "list")?;
 
-		let keys = tokio::task::block_in_place(|| {
-			self.runtime.block_on(self.list_all_keys(primary_namespace, secondary_namespace))
-		})
-		.map_err(|e| {
-			let msg = format!(
-				"Failed to retrieve keys in namespace: {}/{} : {}",
-				primary_namespace, secondary_namespace, e
-			);
-			Error::new(ErrorKind::Other, msg)
-		})?;
+// 		let keys = tokio::task::block_in_place(|| {
+// 			self.runtime.block_on(self.list_all_keys(primary_namespace, secondary_namespace))
+// 		})
+// 		.map_err(|e| {
+// 			let msg = format!(
+// 				"Failed to retrieve keys in namespace: {}/{} : {}",
+// 				primary_namespace, secondary_namespace, e
+// 			);
+// 			Error::new(ErrorKind::Other, msg)
+// 		})?;
 
-		Ok(keys)
-	}
-}
+// 		Ok(keys)
+// 	}
+// }
 
 fn derive_data_encryption_and_obfuscation_keys(vss_seed: &[u8; 32]) -> ([u8; 32], [u8; 32]) {
 	let hkdf = |initial_key_material: &[u8], salt: &[u8]| -> [u8; 32] {

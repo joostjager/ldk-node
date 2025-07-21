@@ -30,8 +30,8 @@ use crate::message_handler::NodeCustomMessageHandler;
 use crate::peer_store::PeerStore;
 use crate::tx_broadcaster::TransactionBroadcaster;
 use crate::types::{
-	ChainMonitor, ChannelManager, DynStore, GossipSync, Graph, KeysManager, MessageRouter,
-	OnionMessenger, PaymentStore, PeerManager,
+	ChainMonitor, ChannelManager, DynStore, DynStoreAsync, GossipSync, Graph, KeysManager,
+	MessageRouter, OnionMessenger, PaymentStore, PeerManager,
 };
 use crate::wallet::persist::KVStoreWalletPersister;
 use crate::wallet::Wallet;
@@ -50,7 +50,7 @@ use lightning::routing::scoring::{
 use lightning::sign::{EntropySource, NodeSigner};
 
 use lightning::util::persist::{
-	read_channel_monitors, CHANNEL_MANAGER_PERSISTENCE_KEY,
+	read_channel_monitors, KVStore, CHANNEL_MANAGER_PERSISTENCE_KEY,
 	CHANNEL_MANAGER_PERSISTENCE_PRIMARY_NAMESPACE, CHANNEL_MANAGER_PERSISTENCE_SECONDARY_NAMESPACE,
 };
 use lightning::util::ser::ReadableArgs;
@@ -529,20 +529,20 @@ impl NodeBuilder {
 
 	/// Builds a [`Node`] instance with a [`SqliteStore`] backend and according to the options
 	/// previously configured.
-	pub fn build(&self) -> Result<Node, BuildError> {
-		let storage_dir_path = self.config.storage_dir_path.clone();
-		fs::create_dir_all(storage_dir_path.clone())
-			.map_err(|_| BuildError::StoragePathAccessFailed)?;
-		let kv_store = Arc::new(
-			SqliteStore::new(
-				storage_dir_path.into(),
-				Some(io::sqlite_store::SQLITE_DB_FILE_NAME.to_string()),
-				Some(io::sqlite_store::KV_TABLE_NAME.to_string()),
-			)
-			.map_err(|_| BuildError::KVStoreSetupFailed)?,
-		);
-		self.build_with_store(kv_store)
-	}
+	// pub async fn build(&self) -> Result<Node, BuildError> {
+	// 	let storage_dir_path = self.config.storage_dir_path.clone();
+	// 	fs::create_dir_all(storage_dir_path.clone())
+	// 		.map_err(|_| BuildError::StoragePathAccessFailed)?;
+	// 	let kv_store = Arc::new(
+	// 		SqliteStore::new(
+	// 			storage_dir_path.into(),
+	// 			Some(io::sqlite_store::SQLITE_DB_FILE_NAME.to_string()),
+	// 			Some(io::sqlite_store::KV_TABLE_NAME.to_string()),
+	// 		)
+	// 		.map_err(|_| BuildError::KVStoreSetupFailed)?,
+	// 	);
+	// 	self.build_with_store(kv_store)
+	// }
 
 	/// Builds a [`Node`] instance with a [`FilesystemStore`] backend and according to the options
 	/// previously configured.
@@ -553,7 +553,10 @@ impl NodeBuilder {
 		fs::create_dir_all(storage_dir_path.clone())
 			.map_err(|_| BuildError::StoragePathAccessFailed)?;
 		let kv_store = Arc::new(FilesystemStore::new(storage_dir_path));
-		self.build_with_store(kv_store)
+
+		let kv_store_async: Arc<DynStoreAsync> = kv_store.clone();
+
+		self.build_with_store(kv_store, kv_store_async)
 	}
 
 	/// Builds a [`Node`] instance with a [VSS] backend and according to the options
@@ -573,46 +576,46 @@ impl NodeBuilder {
 	///
 	/// [VSS]: https://github.com/lightningdevkit/vss-server/blob/main/README.md
 	/// [LNURL-auth]: https://github.com/lnurl/luds/blob/luds/04.md
-	pub fn build_with_vss_store(
-		&self, vss_url: String, store_id: String, lnurl_auth_server_url: String,
-		fixed_headers: HashMap<String, String>,
-	) -> Result<Node, BuildError> {
-		use bitcoin::key::Secp256k1;
+	// pub fn build_with_vss_store(
+	// 	&self, vss_url: String, store_id: String, lnurl_auth_server_url: String,
+	// 	fixed_headers: HashMap<String, String>,
+	// ) -> Result<Node, BuildError> {
+	// 	use bitcoin::key::Secp256k1;
 
-		let logger = setup_logger(&self.log_writer_config, &self.config)?;
+	// 	let logger = setup_logger(&self.log_writer_config, &self.config)?;
 
-		let seed_bytes = seed_bytes_from_config(
-			&self.config,
-			self.entropy_source_config.as_ref(),
-			Arc::clone(&logger),
-		)?;
+	// 	let seed_bytes = seed_bytes_from_config(
+	// 		&self.config,
+	// 		self.entropy_source_config.as_ref(),
+	// 		Arc::clone(&logger),
+	// 	)?;
 
-		let config = Arc::new(self.config.clone());
+	// 	let config = Arc::new(self.config.clone());
 
-		let vss_xprv =
-			derive_xprv(config, &seed_bytes, VSS_HARDENED_CHILD_INDEX, Arc::clone(&logger))?;
+	// 	let vss_xprv =
+	// 		derive_xprv(config, &seed_bytes, VSS_HARDENED_CHILD_INDEX, Arc::clone(&logger))?;
 
-		let lnurl_auth_xprv = vss_xprv
-			.derive_priv(
-				&Secp256k1::new(),
-				&[ChildNumber::Hardened { index: VSS_LNURL_AUTH_HARDENED_CHILD_INDEX }],
-			)
-			.map_err(|e| {
-				log_error!(logger, "Failed to derive VSS secret: {}", e);
-				BuildError::KVStoreSetupFailed
-			})?;
+	// 	let lnurl_auth_xprv = vss_xprv
+	// 		.derive_priv(
+	// 			&Secp256k1::new(),
+	// 			&[ChildNumber::Hardened { index: VSS_LNURL_AUTH_HARDENED_CHILD_INDEX }],
+	// 		)
+	// 		.map_err(|e| {
+	// 			log_error!(logger, "Failed to derive VSS secret: {}", e);
+	// 			BuildError::KVStoreSetupFailed
+	// 		})?;
 
-		let lnurl_auth_jwt_provider =
-			LnurlAuthToJwtProvider::new(lnurl_auth_xprv, lnurl_auth_server_url, fixed_headers)
-				.map_err(|e| {
-					log_error!(logger, "Failed to create LnurlAuthToJwtProvider: {}", e);
-					BuildError::KVStoreSetupFailed
-				})?;
+	// 	let lnurl_auth_jwt_provider =
+	// 		LnurlAuthToJwtProvider::new(lnurl_auth_xprv, lnurl_auth_server_url, fixed_headers)
+	// 			.map_err(|e| {
+	// 				log_error!(logger, "Failed to create LnurlAuthToJwtProvider: {}", e);
+	// 				BuildError::KVStoreSetupFailed
+	// 			})?;
 
-		let header_provider = Arc::new(lnurl_auth_jwt_provider);
+	// 	let header_provider = Arc::new(lnurl_auth_jwt_provider);
 
-		self.build_with_vss_store_and_header_provider(vss_url, store_id, header_provider)
-	}
+	// 	self.build_with_vss_store_and_header_provider(vss_url, store_id, header_provider)
+	// }
 
 	/// Builds a [`Node`] instance with a [VSS] backend and according to the options
 	/// previously configured.
@@ -626,13 +629,13 @@ impl NodeBuilder {
 	/// unrecoverable, i.e., if they remain unresolved after internal retries are exhausted.
 	///
 	/// [VSS]: https://github.com/lightningdevkit/vss-server/blob/main/README.md
-	pub fn build_with_vss_store_and_fixed_headers(
-		&self, vss_url: String, store_id: String, fixed_headers: HashMap<String, String>,
-	) -> Result<Node, BuildError> {
-		let header_provider = Arc::new(FixedHeaders::new(fixed_headers));
+	// pub fn build_with_vss_store_and_fixed_headers(
+	// 	&self, vss_url: String, store_id: String, fixed_headers: HashMap<String, String>,
+	// ) -> Result<Node, BuildError> {
+	// 	let header_provider = Arc::new(FixedHeaders::new(fixed_headers));
 
-		self.build_with_vss_store_and_header_provider(vss_url, store_id, header_provider)
-	}
+	// 	self.build_with_vss_store_and_header_provider(vss_url, store_id, header_provider)
+	// }
 
 	/// Builds a [`Node`] instance with a [VSS] backend and according to the options
 	/// previously configured.
@@ -645,46 +648,49 @@ impl NodeBuilder {
 	/// unrecoverable, i.e., if they remain unresolved after internal retries are exhausted.
 	///
 	/// [VSS]: https://github.com/lightningdevkit/vss-server/blob/main/README.md
-	pub fn build_with_vss_store_and_header_provider(
-		&self, vss_url: String, store_id: String, header_provider: Arc<dyn VssHeaderProvider>,
-	) -> Result<Node, BuildError> {
-		let logger = setup_logger(&self.log_writer_config, &self.config)?;
+	// pub async fn build_with_vss_store_and_header_provider(
+	// 	&self, vss_url: String, store_id: String, header_provider: Arc<dyn VssHeaderProvider>,
+	// ) -> Result<Node, BuildError> {
+	// 	let logger = setup_logger(&self.log_writer_config, &self.config)?;
 
-		let seed_bytes = seed_bytes_from_config(
-			&self.config,
-			self.entropy_source_config.as_ref(),
-			Arc::clone(&logger),
-		)?;
+	// 	let seed_bytes = seed_bytes_from_config(
+	// 		&self.config,
+	// 		self.entropy_source_config.as_ref(),
+	// 		Arc::clone(&logger),
+	// 	)?;
 
-		let config = Arc::new(self.config.clone());
+	// 	let config = Arc::new(self.config.clone());
 
-		let vss_xprv = derive_xprv(
-			config.clone(),
-			&seed_bytes,
-			VSS_HARDENED_CHILD_INDEX,
-			Arc::clone(&logger),
-		)?;
+	// 	let vss_xprv = derive_xprv(
+	// 		config.clone(),
+	// 		&seed_bytes,
+	// 		VSS_HARDENED_CHILD_INDEX,
+	// 		Arc::clone(&logger),
+	// 	)?;
 
-		let vss_seed_bytes: [u8; 32] = vss_xprv.private_key.secret_bytes();
+	// 	let vss_seed_bytes: [u8; 32] = vss_xprv.private_key.secret_bytes();
 
-		let vss_store =
-			VssStore::new(vss_url, store_id, vss_seed_bytes, header_provider).map_err(|e| {
-				log_error!(logger, "Failed to setup VssStore: {}", e);
-				BuildError::KVStoreSetupFailed
-			})?;
-		build_with_store_internal(
-			config,
-			self.chain_data_source_config.as_ref(),
-			self.gossip_source_config.as_ref(),
-			self.liquidity_source_config.as_ref(),
-			seed_bytes,
-			logger,
-			Arc::new(vss_store),
-		)
-	}
+	// 	let vss_store =
+	// 		VssStore::new(vss_url, store_id, vss_seed_bytes, header_provider).map_err(|e| {
+	// 			log_error!(logger, "Failed to setup VssStore: {}", e);
+	// 			BuildError::KVStoreSetupFailed
+	// 		})?;
+	// 	build_with_store_internal(
+	// 		config,
+	// 		self.chain_data_source_config.as_ref(),
+	// 		self.gossip_source_config.as_ref(),
+	// 		self.liquidity_source_config.as_ref(),
+	// 		seed_bytes,
+	// 		logger,
+	// 		Arc::new(vss_store),
+	// 	)
+	// 	.await
+	// }
 
 	/// Builds a [`Node`] instance according to the options previously configured.
-	pub fn build_with_store(&self, kv_store: Arc<DynStore>) -> Result<Node, BuildError> {
+	pub fn build_with_store(
+		&self, kv_store: Arc<DynStore>, kv_store_async: Arc<DynStoreAsync>,
+	) -> Result<Node, BuildError> {
 		let logger = setup_logger(&self.log_writer_config, &self.config)?;
 
 		let seed_bytes = seed_bytes_from_config(
@@ -702,6 +708,7 @@ impl NodeBuilder {
 			seed_bytes,
 			logger,
 			kv_store,
+			kv_store_async,
 		)
 	}
 }
@@ -1049,7 +1056,7 @@ fn build_with_store_internal(
 	config: Arc<Config>, chain_data_source_config: Option<&ChainDataSourceConfig>,
 	gossip_source_config: Option<&GossipSourceConfig>,
 	liquidity_source_config: Option<&LiquiditySourceConfig>, seed_bytes: [u8; 64],
-	logger: Arc<Logger>, kv_store: Arc<DynStore>,
+	logger: Arc<Logger>, kv_store: Arc<DynStore>, kv_store_async: Arc<DynStoreAsync>,
 ) -> Result<Node, BuildError> {
 	if let Err(err) = may_announce_channel(&config) {
 		if config.announcement_addresses.is_some() {
@@ -1567,19 +1574,20 @@ fn build_with_store_internal(
 		Arc::clone(&chain_source),
 		Arc::clone(&keys_manager),
 		Arc::clone(&kv_store),
+		Arc::clone(&kv_store_async),
 		Arc::clone(&logger),
 	) {
 		Ok(output_sweeper) => Arc::new(output_sweeper),
 		Err(e) => {
 			if e.kind() == std::io::ErrorKind::NotFound {
-				Arc::new(OutputSweeper::new_with_kv_store_sync(
+				Arc::new(OutputSweeper::new(
 					channel_manager.current_best_block(),
 					Arc::clone(&tx_broadcaster),
 					Arc::clone(&fee_estimator),
 					Some(Arc::clone(&chain_source)),
 					Arc::clone(&keys_manager),
 					Arc::clone(&keys_manager),
-					Arc::clone(&kv_store),
+					Arc::clone(&kv_store_async),
 					Arc::clone(&logger),
 				))
 			} else {
@@ -1634,6 +1642,7 @@ fn build_with_store_internal(
 		gossip_source,
 		liquidity_source,
 		kv_store,
+		kv_store_async,
 		logger,
 		_router: router,
 		scorer,

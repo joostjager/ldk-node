@@ -101,6 +101,8 @@ mod wallet;
 pub use bip39;
 pub use bitcoin;
 pub use lightning;
+use lightning::util::persist::KVStore;
+use lightning_background_processor::process_events_async;
 pub use lightning_invoice;
 pub use lightning_liquidity;
 pub use lightning_types;
@@ -156,8 +158,6 @@ use lightning::ln::channelmanager::PaymentId;
 use lightning::ln::msgs::SocketAddress;
 use lightning::routing::gossip::NodeAlias;
 
-use lightning_background_processor::process_events_async_with_kv_store_sync;
-
 use bitcoin::secp256k1::PublicKey;
 
 use rand::Rng;
@@ -167,6 +167,8 @@ use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use crate::types::DynStoreAsync;
 
 #[cfg(feature = "uniffi")]
 uniffi::include_scaffolding!("ldk_node");
@@ -194,6 +196,7 @@ pub struct Node {
 	gossip_source: Arc<GossipSource>,
 	liquidity_source: Option<Arc<LiquiditySource<Arc<Logger>>>>,
 	kv_store: Arc<DynStore>,
+	kv_store_async: Arc<DynStoreAsync>,
 	logger: Arc<Logger>,
 	_router: Arc<Router>,
 	scorer: Arc<Mutex<Scorer>>,
@@ -544,7 +547,7 @@ impl Node {
 		));
 
 		// Setup background processing
-		let background_persister = Arc::clone(&self.kv_store);
+		let background_persister = Arc::clone(&self.kv_store_async);
 		let background_event_handler = Arc::clone(&event_handler);
 		let background_chain_mon = Arc::clone(&self.chain_monitor);
 		let background_chan_man = Arc::clone(&self.channel_manager);
@@ -579,7 +582,7 @@ impl Node {
 		};
 
 		let handle = runtime.spawn(async move {
-			process_events_async_with_kv_store_sync(
+			process_events_async(
 				background_persister,
 				|e| background_event_handler.handle_event(e),
 				background_chain_mon,

@@ -130,162 +130,162 @@ impl SqliteStore {
 	}
 }
 
-impl KVStoreSync for SqliteStore {
-	fn read(
-		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
-	) -> io::Result<Vec<u8>> {
-		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "read")?;
+// impl KVStoreSync for SqliteStore {
+// 	fn read(
+// 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
+// 	) -> io::Result<Vec<u8>> {
+// 		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "read")?;
 
-		let locked_conn = self.connection.lock().unwrap();
-		let sql =
-			format!("SELECT value FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;",
-			self.kv_table_name);
+// 		let locked_conn = self.connection.lock().unwrap();
+// 		let sql =
+// 			format!("SELECT value FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;",
+// 			self.kv_table_name);
 
-		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
-			let msg = format!("Failed to prepare statement: {}", e);
-			io::Error::new(io::ErrorKind::Other, msg)
-		})?;
+// 		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
+// 			let msg = format!("Failed to prepare statement: {}", e);
+// 			io::Error::new(io::ErrorKind::Other, msg)
+// 		})?;
 
-		let res = stmt
-			.query_row(
-				named_params! {
-					":primary_namespace": primary_namespace,
-					":secondary_namespace": secondary_namespace,
-					":key": key,
-				},
-				|row| row.get(0),
-			)
-			.map_err(|e| match e {
-				rusqlite::Error::QueryReturnedNoRows => {
-					let msg = format!(
-						"Failed to read as key could not be found: {}/{}/{}",
-						PrintableString(primary_namespace),
-						PrintableString(secondary_namespace),
-						PrintableString(key)
-					);
-					io::Error::new(io::ErrorKind::NotFound, msg)
-				},
-				e => {
-					let msg = format!(
-						"Failed to read from key {}/{}/{}: {}",
-						PrintableString(primary_namespace),
-						PrintableString(secondary_namespace),
-						PrintableString(key),
-						e
-					);
-					io::Error::new(io::ErrorKind::Other, msg)
-				},
-			})?;
-		Ok(res)
-	}
+// 		let res = stmt
+// 			.query_row(
+// 				named_params! {
+// 					":primary_namespace": primary_namespace,
+// 					":secondary_namespace": secondary_namespace,
+// 					":key": key,
+// 				},
+// 				|row| row.get(0),
+// 			)
+// 			.map_err(|e| match e {
+// 				rusqlite::Error::QueryReturnedNoRows => {
+// 					let msg = format!(
+// 						"Failed to read as key could not be found: {}/{}/{}",
+// 						PrintableString(primary_namespace),
+// 						PrintableString(secondary_namespace),
+// 						PrintableString(key)
+// 					);
+// 					io::Error::new(io::ErrorKind::NotFound, msg)
+// 				},
+// 				e => {
+// 					let msg = format!(
+// 						"Failed to read from key {}/{}/{}: {}",
+// 						PrintableString(primary_namespace),
+// 						PrintableString(secondary_namespace),
+// 						PrintableString(key),
+// 						e
+// 					);
+// 					io::Error::new(io::ErrorKind::Other, msg)
+// 				},
+// 			})?;
+// 		Ok(res)
+// 	}
 
-	fn write(
-		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
-	) -> io::Result<()> {
-		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "write")?;
+// fn write(
+// 	&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
+// ) -> io::Result<()> {
+// 	check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "write")?;
 
-		let locked_conn = self.connection.lock().unwrap();
+// 		let locked_conn = self.connection.lock().unwrap();
 
-		let sql = format!(
-			"INSERT OR REPLACE INTO {} (primary_namespace, secondary_namespace, key, value) VALUES (:primary_namespace, :secondary_namespace, :key, :value);",
-			self.kv_table_name
-		);
+// 		let sql = format!(
+// 			"INSERT OR REPLACE INTO {} (primary_namespace, secondary_namespace, key, value) VALUES (:primary_namespace, :secondary_namespace, :key, :value);",
+// 			self.kv_table_name
+// 		);
 
-		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
-			let msg = format!("Failed to prepare statement: {}", e);
-			io::Error::new(io::ErrorKind::Other, msg)
-		})?;
+// 		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
+// 			let msg = format!("Failed to prepare statement: {}", e);
+// 			io::Error::new(io::ErrorKind::Other, msg)
+// 		})?;
 
-		stmt.execute(named_params! {
-			":primary_namespace": primary_namespace,
-			":secondary_namespace": secondary_namespace,
-			":key": key,
-			":value": buf,
-		})
-		.map(|_| ())
-		.map_err(|e| {
-			let msg = format!(
-				"Failed to write to key {}/{}/{}: {}",
-				PrintableString(primary_namespace),
-				PrintableString(secondary_namespace),
-				PrintableString(key),
-				e
-			);
-			io::Error::new(io::ErrorKind::Other, msg)
-		})
-	}
+// 		stmt.execute(named_params! {
+// 			":primary_namespace": primary_namespace,
+// 			":secondary_namespace": secondary_namespace,
+// 			":key": key,
+// 			":value": buf,
+// 		})
+// 		.map(|_| ())
+// 		.map_err(|e| {
+// 			let msg = format!(
+// 				"Failed to write to key {}/{}/{}: {}",
+// 				PrintableString(primary_namespace),
+// 				PrintableString(secondary_namespace),
+// 				PrintableString(key),
+// 				e
+// 			);
+// 			io::Error::new(io::ErrorKind::Other, msg)
+// 		})
+// 	}
 
-	fn remove(
-		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, _lazy: bool,
-	) -> io::Result<()> {
-		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "remove")?;
+// 	fn remove(
+// 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, _lazy: bool,
+// 	) -> io::Result<()> {
+// 		check_namespace_key_validity(primary_namespace, secondary_namespace, Some(key), "remove")?;
 
-		let locked_conn = self.connection.lock().unwrap();
+// 		let locked_conn = self.connection.lock().unwrap();
 
-		let sql = format!("DELETE FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;", self.kv_table_name);
+// 		let sql = format!("DELETE FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;", self.kv_table_name);
 
-		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
-			let msg = format!("Failed to prepare statement: {}", e);
-			io::Error::new(io::ErrorKind::Other, msg)
-		})?;
+// 		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
+// 			let msg = format!("Failed to prepare statement: {}", e);
+// 			io::Error::new(io::ErrorKind::Other, msg)
+// 		})?;
 
-		stmt.execute(named_params! {
-			":primary_namespace": primary_namespace,
-			":secondary_namespace": secondary_namespace,
-			":key": key,
-		})
-		.map_err(|e| {
-			let msg = format!(
-				"Failed to delete key {}/{}/{}: {}",
-				PrintableString(primary_namespace),
-				PrintableString(secondary_namespace),
-				PrintableString(key),
-				e
-			);
-			io::Error::new(io::ErrorKind::Other, msg)
-		})?;
-		Ok(())
-	}
+// 		stmt.execute(named_params! {
+// 			":primary_namespace": primary_namespace,
+// 			":secondary_namespace": secondary_namespace,
+// 			":key": key,
+// 		})
+// 		.map_err(|e| {
+// 			let msg = format!(
+// 				"Failed to delete key {}/{}/{}: {}",
+// 				PrintableString(primary_namespace),
+// 				PrintableString(secondary_namespace),
+// 				PrintableString(key),
+// 				e
+// 			);
+// 			io::Error::new(io::ErrorKind::Other, msg)
+// 		})?;
+// 		Ok(())
+// 	}
 
-	fn list(&self, primary_namespace: &str, secondary_namespace: &str) -> io::Result<Vec<String>> {
-		check_namespace_key_validity(primary_namespace, secondary_namespace, None, "list")?;
+// 	fn list(&self, primary_namespace: &str, secondary_namespace: &str) -> io::Result<Vec<String>> {
+// 		check_namespace_key_validity(primary_namespace, secondary_namespace, None, "list")?;
 
-		let locked_conn = self.connection.lock().unwrap();
+// 		let locked_conn = self.connection.lock().unwrap();
 
-		let sql = format!(
-			"SELECT key FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace",
-			self.kv_table_name
-		);
-		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
-			let msg = format!("Failed to prepare statement: {}", e);
-			io::Error::new(io::ErrorKind::Other, msg)
-		})?;
+// 		let sql = format!(
+// 			"SELECT key FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace",
+// 			self.kv_table_name
+// 		);
+// 		let mut stmt = locked_conn.prepare_cached(&sql).map_err(|e| {
+// 			let msg = format!("Failed to prepare statement: {}", e);
+// 			io::Error::new(io::ErrorKind::Other, msg)
+// 		})?;
 
-		let mut keys = Vec::new();
+// 		let mut keys = Vec::new();
 
-		let rows_iter = stmt
-			.query_map(
-				named_params! {
-						":primary_namespace": primary_namespace,
-						":secondary_namespace": secondary_namespace,
-				},
-				|row| row.get(0),
-			)
-			.map_err(|e| {
-				let msg = format!("Failed to retrieve queried rows: {}", e);
-				io::Error::new(io::ErrorKind::Other, msg)
-			})?;
+// 		let rows_iter = stmt
+// 			.query_map(
+// 				named_params! {
+// 						":primary_namespace": primary_namespace,
+// 						":secondary_namespace": secondary_namespace,
+// 				},
+// 				|row| row.get(0),
+// 			)
+// 			.map_err(|e| {
+// 				let msg = format!("Failed to retrieve queried rows: {}", e);
+// 				io::Error::new(io::ErrorKind::Other, msg)
+// 			})?;
 
-		for k in rows_iter {
-			keys.push(k.map_err(|e| {
-				let msg = format!("Failed to retrieve queried rows: {}", e);
-				io::Error::new(io::ErrorKind::Other, msg)
-			})?);
-		}
+// 		for k in rows_iter {
+// 			keys.push(k.map_err(|e| {
+// 				let msg = format!("Failed to retrieve queried rows: {}", e);
+// 				io::Error::new(io::ErrorKind::Other, msg)
+// 			})?);
+// 		}
 
-		Ok(keys)
-	}
-}
+// 		Ok(keys)
+// 	}
+// }
 
 #[cfg(test)]
 mod tests {
@@ -303,37 +303,37 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn read_write_remove_list_persist() {
-		let mut temp_path = random_storage_path();
-		temp_path.push("read_write_remove_list_persist");
-		let store = SqliteStore::new(
-			temp_path,
-			Some("test_db".to_string()),
-			Some("test_table".to_string()),
-		)
-		.unwrap();
-		do_read_write_remove_list_persist(&store);
-	}
+	// #[test]
+	// fn read_write_remove_list_persist() {
+	// 	let mut temp_path = random_storage_path();
+	// 	temp_path.push("read_write_remove_list_persist");
+	// 	let store = SqliteStore::new(
+	// 		temp_path,
+	// 		Some("test_db".to_string()),
+	// 		Some("test_table".to_string()),
+	// 	)
+	// 	.unwrap();
+	// 	do_read_write_remove_list_persist(&store);
+	// }
 
-	#[test]
-	fn test_sqlite_store() {
-		let mut temp_path = random_storage_path();
-		temp_path.push("test_sqlite_store");
-		let store_0 = SqliteStore::new(
-			temp_path.clone(),
-			Some("test_db_0".to_string()),
-			Some("test_table".to_string()),
-		)
-		.unwrap();
-		let store_1 = SqliteStore::new(
-			temp_path,
-			Some("test_db_1".to_string()),
-			Some("test_table".to_string()),
-		)
-		.unwrap();
-		do_test_store(&store_0, &store_1)
-	}
+	// #[test]
+	// fn test_sqlite_store() {
+	// 	let mut temp_path = random_storage_path();
+	// 	temp_path.push("test_sqlite_store");
+	// 	let store_0 = SqliteStore::new(
+	// 		temp_path.clone(),
+	// 		Some("test_db_0".to_string()),
+	// 		Some("test_table".to_string()),
+	// 	)
+	// 	.unwrap();
+	// 	let store_1 = SqliteStore::new(
+	// 		temp_path,
+	// 		Some("test_db_1".to_string()),
+	// 		Some("test_table".to_string()),
+	// 	)
+	// 	.unwrap();
+	// 	do_test_store(&store_0, &store_1)
+	// }
 }
 
 #[cfg(ldk_bench)]

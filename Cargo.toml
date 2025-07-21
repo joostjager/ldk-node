@@ -52,17 +52,17 @@ default = []
 #lightning-liquidity = { git = "https://github.com/lightningdevkit/rust-lightning", branch = "main" }
 #lightning-macros = { git = "https://github.com/lightningdevkit/rust-lightning", branch = "main" }
 
-lightning = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args", features = ["std"] }
-lightning-types = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args" }
-lightning-invoice = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args", features = ["std"] }
-lightning-net-tokio = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args" }
-lightning-persister = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args" }
-lightning-background-processor = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args" }
-lightning-rapid-gossip-sync = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args" }
-lightning-block-sync = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args", features = ["rest-client", "rpc-client", "tokio"] }
-lightning-transaction-sync = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args", features = ["esplora-async-https", "electrum", "time"] }
-lightning-liquidity = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args" }
-lightning-macros = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args" }
+lightning = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore", features = ["std"] }
+lightning-types = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore" }
+lightning-invoice = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore", features = ["std"] }
+lightning-net-tokio = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore" }
+lightning-persister = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore", features = ["tokio"] }
+lightning-background-processor = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore" }
+lightning-rapid-gossip-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore" }
+lightning-block-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore", features = ["rest-client", "rpc-client", "tokio"] }
+lightning-transaction-sync = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore", features = ["esplora-async-https", "electrum", "time"] }
+lightning-liquidity = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore" }
+lightning-macros = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore" }
 
 #lightning = { path = "../rust-lightning/lightning", features = ["std"] }
 #lightning-types = { path = "../rust-lightning/lightning-types" }
@@ -108,7 +108,7 @@ winapi = { version = "0.3", features = ["winbase"] }
 [dev-dependencies]
 #lightning = { version = "0.1.0", features = ["std", "_test_utils"] }
 #lightning = { git = "https://github.com/lightningdevkit/rust-lightning", branch="main", features = ["std", "_test_utils"] }
-lightning = { git = "https://github.com/joostjager/rust-lightning", branch="owned-kvstore-args", features = ["std", "_test_utils"] }
+lightning = { git = "https://github.com/joostjager/rust-lightning", branch = "async-fsstore", features = ["std", "_test_utils"] }
 #lightning = { path = "../rust-lightning/lightning", features = ["std", "_test_utils"] }
 proptest = "1.0.0"
 regex = "1.5.6"

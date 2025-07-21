@@ -15,7 +15,7 @@ use crate::io::{
 };
 use crate::logger::{log_error, LdkLogger, Logger};
 use crate::peer_store::PeerStore;
-use crate::types::{Broadcaster, DynStore, KeysManager, Sweeper};
+use crate::types::{Broadcaster, DynStore, DynStoreAsync, KeysManager, Sweeper};
 use crate::wallet::ser::{ChangeSetDeserWrapper, ChangeSetSerWrapper};
 use crate::{Error, EventQueue, NodeMetrics, PaymentDetails};
 
@@ -236,7 +236,7 @@ where
 pub(crate) fn read_output_sweeper(
 	broadcaster: Arc<Broadcaster>, fee_estimator: Arc<OnchainFeeEstimator>,
 	chain_data_source: Arc<ChainSource>, keys_manager: Arc<KeysManager>, kv_store: Arc<DynStore>,
-	logger: Arc<Logger>,
+	kv_store_async: Arc<DynStoreAsync>, logger: Arc<Logger>,
 ) -> Result<Sweeper, std::io::Error> {
 	let mut reader = Cursor::new(kv_store.read(
 		OUTPUT_SWEEPER_PERSISTENCE_PRIMARY_NAMESPACE,
@@ -249,10 +249,10 @@ pub(crate) fn read_output_sweeper(
 		Some(chain_data_source),
 		Arc::clone(&keys_manager),
 		keys_manager,
-		kv_store,
+		kv_store_async,
 		logger.clone(),
 	);
-	OutputSweeper::read_with_kv_store_sync(&mut reader, args).map_err(|e| {
+	OutputSweeper::read(&mut reader, args).map_err(|e| {
 		log_error!(logger, "Failed to deserialize OutputSweeper: {}", e);
 		std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to deserialize OutputSweeper")
 	})

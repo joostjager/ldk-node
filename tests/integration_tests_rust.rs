@@ -23,10 +23,10 @@ use ldk_node::payment::{
 };
 use ldk_node::{Builder, Event, NodeError};
 
-use lightning::ln::channelmanager::PaymentId;
 use lightning::routing::gossip::{NodeAlias, NodeId};
 use lightning::routing::router::RouteParametersConfig;
 use lightning::util::persist::KVStoreSync;
+use lightning::{ln::channelmanager::PaymentId, util::persist::KVStore};
 
 use lightning_invoice::{Bolt11InvoiceDescription, Description};
 
@@ -34,6 +34,7 @@ use bitcoin::address::NetworkUnchecked;
 use bitcoin::hashes::Hash;
 use bitcoin::Address;
 use bitcoin::Amount;
+use lightning_persister::fs_store;
 use log::LevelFilter;
 
 use std::str::FromStr;
@@ -150,7 +151,7 @@ fn multi_hop_sending() {
 		let sync_config = EsploraSyncConfig { background_sync_config: None };
 		setup_builder!(builder, config.node_config);
 		builder.set_chain_source_esplora(esplora_url.clone(), Some(sync_config));
-		let node = builder.build().unwrap();
+		let node = builder.build_with_fs_store().unwrap();
 		node.start().unwrap();
 		nodes.push(node);
 	}
@@ -242,14 +243,15 @@ fn start_stop_reinit() {
 
 	let esplora_url = format!("http://{}", electrsd.esplora_url.as_ref().unwrap());
 
-	let test_sync_store: Arc<dyn KVStoreSync + Sync + Send> =
-		Arc::new(TestSyncStore::new(config.node_config.storage_dir_path.clone().into()));
+	let store = Arc::new(TestSyncStore::new(config.node_config.storage_dir_path.clone().into()));
 
 	let sync_config = EsploraSyncConfig { background_sync_config: None };
 	setup_builder!(builder, config.node_config);
 	builder.set_chain_source_esplora(esplora_url.clone(), Some(sync_config));
 
-	let node = builder.build_with_store(Arc::clone(&test_sync_store)).unwrap();
+	let fs_store = Arc::clone(&store.fs_store);
+	let fs_store_async = Arc::clone(&store.fs_store);
+	let node = builder.build_with_store(fs_store, fs_store_async).unwrap();
 	node.start().unwrap();
 
 	let expected_node_id = node.node_id();
@@ -286,7 +288,9 @@ fn start_stop_reinit() {
 	setup_builder!(builder, config.node_config);
 	builder.set_chain_source_esplora(esplora_url.clone(), Some(sync_config));
 
-	let reinitialized_node = builder.build_with_store(Arc::clone(&test_sync_store)).unwrap();
+	let fs_store_2 = Arc::clone(&store.fs_store);
+	let fs_store_async_2 = Arc::clone(&store.fs_store);
+	let reinitialized_node = builder.build_with_store(fs_store_2, fs_store_async_2).unwrap();
 	reinitialized_node.start().unwrap();
 	assert_eq!(reinitialized_node.node_id(), expected_node_id);
 
@@ -1272,7 +1276,7 @@ fn lsps2_client_service_integration() {
 	setup_builder!(service_builder, service_config.node_config);
 	service_builder.set_chain_source_esplora(esplora_url.clone(), Some(sync_config));
 	service_builder.set_liquidity_provider_lsps2(lsps2_service_config);
-	let service_node = service_builder.build().unwrap();
+	let service_node = service_builder.build_with_fs_store().unwrap();
 	service_node.start().unwrap();
 
 	let service_node_id = service_node.node_id();
@@ -1282,13 +1286,13 @@ fn lsps2_client_service_integration() {
 	setup_builder!(client_builder, client_config.node_config);
 	client_builder.set_chain_source_esplora(esplora_url.clone(), Some(sync_config));
 	client_builder.set_liquidity_source_lsps2(service_node_id, service_addr, None);
-	let client_node = client_builder.build().unwrap();
+	let client_node = client_builder.build_with_fs_store().unwrap();
 	client_node.start().unwrap();
 
 	let payer_config = random_config(true);
 	setup_builder!(payer_builder, payer_config.node_config);
 	payer_builder.set_chain_source_esplora(esplora_url.clone(), Some(sync_config));
-	let payer_node = payer_builder.build().unwrap();
+	let payer_node = payer_builder.build_with_fs_store().unwrap();
 	payer_node.start().unwrap();
 
 	let service_addr = service_node.onchain_payment().new_address().unwrap();
