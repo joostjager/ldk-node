@@ -1157,12 +1157,14 @@ impl KVStoreSync for TestSyncStore {
 	}
 
 	fn write(
-		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: &[u8],
+		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
 	) -> lightning::io::Result<()> {
 		let _guard = self.serializer.write().unwrap();
-		let fs_res = self.fs_store.write(primary_namespace, secondary_namespace, key, buf);
-		let sqlite_res = self.sqlite_store.write(primary_namespace, secondary_namespace, key, buf);
-		let test_res = self.test_store.write(primary_namespace, secondary_namespace, key, buf);
+		let fs_res = self.fs_store.write(primary_namespace, secondary_namespace, key, buf.clone());
+		let sqlite_res =
+			self.sqlite_store.write(primary_namespace, secondary_namespace, key, buf.clone());
+		let test_res =
+			self.test_store.write(primary_namespace, secondary_namespace, key, buf.clone());
 
 		assert!(self
 			.do_list(primary_namespace, secondary_namespace)

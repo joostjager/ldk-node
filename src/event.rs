@@ -358,7 +358,7 @@ where
 				EVENT_QUEUE_PERSISTENCE_PRIMARY_NAMESPACE,
 				EVENT_QUEUE_PERSISTENCE_SECONDARY_NAMESPACE,
 				EVENT_QUEUE_PERSISTENCE_KEY,
-				&data,
+				data,
 			)
 			.map_err(|e| {
 				log_error!(

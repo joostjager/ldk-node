@@ -30,22 +30,23 @@ pub(crate) fn random_storage_path() -> PathBuf {
 }
 
 pub(crate) fn do_read_write_remove_list_persist<K: KVStoreSync + RefUnwindSafe>(kv_store: &K) {
-	let data = [42u8; 32];
+	let data = vec![42u8; 32];
 
 	let primary_namespace = "testspace";
 	let secondary_namespace = "testsubspace";
 	let key = "testkey";
 
 	// Test the basic KVStore operations.
-	kv_store.write(primary_namespace, secondary_namespace, key, &data).unwrap();
+	kv_store.write(primary_namespace, secondary_namespace, key, data.clone()).unwrap();
 
 	// Test empty primary/secondary namespaces are allowed, but not empty primary namespace and non-empty
 	// secondary primary_namespace, and not empty key.
-	kv_store.write("", "", key, &data).unwrap();
-	let res = std::panic::catch_unwind(|| kv_store.write("", secondary_namespace, key, &data));
+	kv_store.write("", "", key, data.clone()).unwrap();
+	let res =
+		std::panic::catch_unwind(|| kv_store.write("", secondary_namespace, key, data.clone()));
 	assert!(res.is_err());
 	let res = std::panic::catch_unwind(|| {
-		kv_store.write(primary_namespace, secondary_namespace, "", &data)
+		kv_store.write(primary_namespace, secondary_namespace, "", data.clone())
 	});
 	assert!(res.is_err());
 
@@ -63,7 +64,7 @@ pub(crate) fn do_read_write_remove_list_persist<K: KVStoreSync + RefUnwindSafe>(
 
 	// Ensure we have no issue operating with primary_namespace/secondary_namespace/key being KVSTORE_NAMESPACE_KEY_MAX_LEN
 	let max_chars: String = std::iter::repeat('A').take(KVSTORE_NAMESPACE_KEY_MAX_LEN).collect();
-	kv_store.write(&max_chars, &max_chars, &max_chars, &data).unwrap();
+	kv_store.write(&max_chars, &max_chars, &max_chars, data.clone()).unwrap();
 
 	let listed_keys = kv_store.list(&max_chars, &max_chars).unwrap();
 	assert_eq!(listed_keys.len(), 1);
