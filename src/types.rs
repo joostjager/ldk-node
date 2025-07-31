@@ -34,6 +34,8 @@ use lightning_block_sync::gossip::{GossipVerifier, UtxoSource};
 
 use lightning_net_tokio::SocketDescriptor;
 
+use lightning_liquidity::utils::time::DefaultTimeProvider;
+
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::OutPoint;
 
@@ -62,8 +64,13 @@ pub(crate) type PeerManager = lightning::ln::peer_handler::PeerManager<
 	Arc<ChainMonitor>,
 >;
 
-pub(crate) type LiquidityManager =
-	lightning_liquidity::LiquidityManager<Arc<KeysManager>, Arc<ChannelManager>, Arc<ChainSource>>;
+pub(crate) type LiquidityManager = lightning_liquidity::LiquidityManager<
+	Arc<KeysManager>,
+	Arc<KeysManager>,
+	Arc<ChannelManager>,
+	Arc<ChainSource>,
+	Arc<DefaultTimeProvider>,
+>;
 
 pub(crate) type ChannelManager = lightning::ln::channelmanager::ChannelManager<
 	Arc<ChainMonitor>,

@@ -222,16 +222,22 @@ where
 	pub(crate) fn build(self) -> LiquiditySource<L> {
 		let liquidity_service_config = self.lsps2_service.as_ref().map(|s| {
 			let lsps2_service_config = Some(s.ldk_service_config.clone());
+			let lsps5_service_config = None;
 			let advertise_service = s.service_config.advertise_service;
-			LiquidityServiceConfig { lsps2_service_config, advertise_service }
+			LiquidityServiceConfig { lsps2_service_config, lsps5_service_config, advertise_service }
 		});
 
 		let lsps1_client_config = self.lsps1_client.as_ref().map(|s| s.ldk_client_config.clone());
 		let lsps2_client_config = self.lsps2_client.as_ref().map(|s| s.ldk_client_config.clone());
-		let liquidity_client_config =
-			Some(LiquidityClientConfig { lsps1_client_config, lsps2_client_config });
+		let lsps5_client_config = None;
+		let liquidity_client_config = Some(LiquidityClientConfig {
+			lsps1_client_config,
+			lsps2_client_config,
+			lsps5_client_config,
+		});
 
 		let liquidity_manager = Arc::new(LiquidityManager::new(
+			Arc::clone(&self.keys_manager),
 			Arc::clone(&self.keys_manager),
 			Arc::clone(&self.channel_manager),
 			Some(Arc::clone(&self.chain_source)),
