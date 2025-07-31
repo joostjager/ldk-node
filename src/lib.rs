@@ -94,7 +94,6 @@ pub mod logger;
 mod message_handler;
 pub mod payment;
 mod peer_store;
-mod sweep;
 mod tx_broadcaster;
 mod types;
 mod wallet;
