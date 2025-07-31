@@ -828,6 +828,10 @@ impl NodeSigner for WalletKeysManager {
 		self.inner.get_peer_storage_key()
 	}
 
+	fn get_receive_auth_key(&self) -> lightning::sign::ReceiveAuthKey {
+		self.inner.get_receive_auth_key()
+	}
+
 	fn sign_invoice(
 		&self, invoice: &RawBolt11Invoice, recipient: Recipient,
 	) -> Result<RecoverableSignature, ()> {
@@ -842,6 +846,9 @@ impl NodeSigner for WalletKeysManager {
 		&self, invoice: &lightning::offers::invoice::UnsignedBolt12Invoice,
 	) -> Result<bitcoin::secp256k1::schnorr::Signature, ()> {
 		self.inner.sign_bolt12_invoice(invoice)
+	}
+	fn sign_message(&self, msg: &[u8]) -> Result<String, ()> {
+		self.inner.sign_message(msg)
 	}
 }
 
