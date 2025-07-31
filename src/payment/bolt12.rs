@@ -275,17 +275,17 @@ impl Bolt12Payment {
 	pub(crate) fn receive_inner(
 		&self, amount_msat: u64, description: &str, expiry_secs: Option<u32>, quantity: Option<u64>,
 	) -> Result<LdkOffer, Error> {
-		let absolute_expiry = expiry_secs.map(|secs| {
-			(SystemTime::now() + Duration::from_secs(secs as u64))
-				.duration_since(UNIX_EPOCH)
-				.unwrap()
-		});
+		let mut offer_builder = self.channel_manager.create_offer_builder().map_err(|e| {
+			log_error!(self.logger, "Failed to create offer builder: {:?}", e);
+			Error::OfferCreationFailed
+		})?;
 
-		let offer_builder =
-			self.channel_manager.create_offer_builder(absolute_expiry).map_err(|e| {
-				log_error!(self.logger, "Failed to create offer builder: {:?}", e);
-				Error::OfferCreationFailed
-			})?;
+		if let Some(expiry_secs) = expiry_secs {
+			let absolute_expiry = (SystemTime::now() + Duration::from_secs(expiry_secs as u64))
+				.duration_since(UNIX_EPOCH)
+				.unwrap();
+			offer_builder = offer_builder.absolute_expiry(absolute_expiry);
+		}
 
 		let mut offer =
 			offer_builder.amount_msats(amount_msat).description(description.to_string());
@@ -321,17 +321,18 @@ impl Bolt12Payment {
 	pub fn receive_variable_amount(
 		&self, description: &str, expiry_secs: Option<u32>,
 	) -> Result<Offer, Error> {
-		let absolute_expiry = expiry_secs.map(|secs| {
-			(SystemTime::now() + Duration::from_secs(secs as u64))
-				.duration_since(UNIX_EPOCH)
-				.unwrap()
-		});
+		let mut offer_builder = self.channel_manager.create_offer_builder().map_err(|e| {
+			log_error!(self.logger, "Failed to create offer builder: {:?}", e);
+			Error::OfferCreationFailed
+		})?;
 
-		let offer_builder =
-			self.channel_manager.create_offer_builder(absolute_expiry).map_err(|e| {
-				log_error!(self.logger, "Failed to create offer builder: {:?}", e);
-				Error::OfferCreationFailed
-			})?;
+		if let Some(expiry_secs) = expiry_secs {
+			let absolute_expiry = (SystemTime::now() + Duration::from_secs(expiry_secs as u64))
+				.duration_since(UNIX_EPOCH)
+				.unwrap();
+			offer_builder = offer_builder.absolute_expiry(absolute_expiry);
+		}
+
 		let offer = offer_builder.description(description.to_string()).build().map_err(|e| {
 			log_error!(self.logger, "Failed to create offer: {:?}", e);
 			Error::OfferCreationFailed
