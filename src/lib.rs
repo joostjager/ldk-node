@@ -94,7 +94,9 @@ pub mod logger;
 mod message_handler;
 pub mod payment;
 mod peer_store;
+mod rate_limiter;
 mod runtime;
+mod static_invoice_store;
 mod tx_broadcaster;
 mod types;
 mod wallet;
@@ -150,6 +152,7 @@ pub use types::{ChannelDetails, CustomTlvRecord, PeerDetails, UserChannelId};
 
 use logger::{log_debug, log_error, log_info, log_trace, LdkLogger, Logger};
 
+use lightning::blinded_path::message::BlindedMessagePath;
 use lightning::chain::BestBlock;
 use lightning::events::bump_transaction::Wallet as LdkWallet;
 use lightning::impl_writeable_tlv_based;
@@ -157,6 +160,8 @@ use lightning::ln::channel_state::ChannelShutdownState;
 use lightning::ln::channelmanager::PaymentId;
 use lightning::ln::msgs::SocketAddress;
 use lightning::routing::gossip::NodeAlias;
+use lightning::util::ser::Readable;
+use lightning::util::ser::Writeable;
 
 use lightning_background_processor::process_events_async_with_kv_store_sync;
 
@@ -169,6 +174,8 @@ use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use crate::static_invoice_store::StaticInvoiceStore;
 
 #[cfg(feature = "uniffi")]
 uniffi::include_scaffolding!("ldk_node");
@@ -498,6 +505,8 @@ impl Node {
 			Arc::clone(&self.logger),
 		));
 
+		let static_invoice_store = StaticInvoiceStore::new(Arc::clone(&self.kv_store));
+
 		let event_handler = Arc::new(EventHandler::new(
 			Arc::clone(&self.event_queue),
 			Arc::clone(&self.wallet),
@@ -509,6 +518,7 @@ impl Node {
 			self.liquidity_source.clone(),
 			Arc::clone(&self.payment_store),
 			Arc::clone(&self.peer_store),
+			static_invoice_store,
 			Arc::clone(&self.runtime),
 			Arc::clone(&self.logger),
 			Arc::clone(&self.config),
@@ -1480,6 +1490,39 @@ impl Node {
 				);
 				Error::PersistenceFailed
 			})
+	}
+
+	/// Sets the [`BlindedMessagePath`]s that we will use as an async recipient to interactively build [`Offer`]s with a
+	/// static invoice server, so the server can serve [`StaticInvoice`]s to payers on our behalf when we're offline.
+	///
+	/// [`Offer`]: lightning::offers::offer::Offer
+	/// [`StaticInvoice`]: lightning::offers::static_invoice::StaticInvoice
+	pub fn set_paths_to_static_invoice_server(&self, paths: Vec<u8>) -> Result<(), Error> {
+		let decoded_paths = <Vec<BlindedMessagePath> as Readable>::read(&mut &paths[..])
+			.or(Err(Error::InvalidBlindedPaths))?;
+
+		self.channel_manager
+			.set_paths_to_static_invoice_server(decoded_paths)
+			.or(Err(Error::InvalidBlindedPaths))
+	}
+
+	/// [`BlindedMessagePath`]s for an async recipient to communicate with this node and interactively
+	/// build [`Offer`]s and [`StaticInvoice`]s for receiving async payments.
+	///
+	/// [`Offer`]: lightning::offers::offer::Offer
+	/// [`StaticInvoice`]: lightning::offers::static_invoice::StaticInvoice
+	pub fn blinded_paths_for_async_recipient(
+		&self, recipient_id: Vec<u8>,
+	) -> Result<Vec<u8>, Error> {
+		let paths = self
+			.channel_manager
+			.blinded_paths_for_async_recipient(recipient_id, None)
+			.or(Err(Error::OperationFailed))?;
+
+		let mut bytes = Vec::new();
+		paths.write(&mut bytes).or(Err(Error::OperationFailed))?;
+
+		Ok(bytes)
 	}
 }
 

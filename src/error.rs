@@ -120,6 +120,10 @@ pub enum Error {
 	LiquiditySourceUnavailable,
 	/// The given operation failed due to the LSP's required opening fee being too high.
 	LiquidityFeeTooHigh,
+	/// The given blinded paths are invalid.
+	InvalidBlindedPaths,
+	/// The requested operation failed.
+	OperationFailed,
 }
 
 impl fmt::Display for Error {
@@ -193,6 +197,8 @@ impl fmt::Display for Error {
 			Self::LiquidityFeeTooHigh => {
 				write!(f, "The given operation failed due to the LSP's required opening fee being too high.")
 			},
+			Self::InvalidBlindedPaths => write!(f, "The given blinded paths are invalid."),
+			Self::OperationFailed => write!(f, "The requested operation failed."),
 		}
 	}
 }

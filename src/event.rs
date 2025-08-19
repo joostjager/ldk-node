@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. You may not use this file except in
 // accordance with one or both of these licenses.
 
+use crate::static_invoice_store::StaticInvoiceStore;
 use crate::types::{CustomTlvRecord, DynStore, PaymentStore, Sweeper, Wallet};
 
 use crate::{
@@ -458,6 +459,7 @@ where
 	runtime: Arc<Runtime>,
 	logger: L,
 	config: Arc<Config>,
+	static_invoice_store: StaticInvoiceStore,
 }
 
 impl<L: Deref + Clone + Sync + Send + 'static> EventHandler<L>
@@ -470,8 +472,9 @@ where
 		channel_manager: Arc<ChannelManager>, connection_manager: Arc<ConnectionManager<L>>,
 		output_sweeper: Arc<Sweeper>, network_graph: Arc<Graph>,
 		liquidity_source: Option<Arc<LiquiditySource<Arc<Logger>>>>,
-		payment_store: Arc<PaymentStore>, peer_store: Arc<PeerStore<L>>, runtime: Arc<Runtime>,
-		logger: L, config: Arc<Config>,
+		payment_store: Arc<PaymentStore>, peer_store: Arc<PeerStore<L>>,
+		static_invoice_store: StaticInvoiceStore, runtime: Arc<Runtime>, logger: L,
+		config: Arc<Config>,
 	) -> Self {
 		Self {
 			event_queue,
@@ -487,6 +490,7 @@ where
 			logger,
 			runtime,
 			config,
+			static_invoice_store,
 		}
 	}
 
@@ -1494,11 +1498,45 @@ where
 			LdkEvent::OnionMessagePeerConnected { .. } => {
 				debug_assert!(false, "We currently don't support onion message interception, so this event should never be emitted.");
 			},
-			LdkEvent::PersistStaticInvoice { .. } => {
-				debug_assert!(false, "We currently don't support static invoice persistence, so this event should never be emitted.");
+
+			LdkEvent::PersistStaticInvoice {
+				invoice,
+				invoice_slot,
+				recipient_id,
+				invoice_persisted_path,
+			} => {
+				match self
+					.static_invoice_store
+					.handle_persist_static_invoice(invoice, invoice_slot, recipient_id)
+					.await
+				{
+					Ok(_) => {},
+					Err(e) => {
+						log_error!(self.logger, "Failed to persist static invoice: {}", e);
+					},
+				};
+
+				self.channel_manager.static_invoice_persisted(invoice_persisted_path);
 			},
-			LdkEvent::StaticInvoiceRequested { .. } => {
-				debug_assert!(false, "We currently don't support static invoice persistence, so this event should never be emitted.");
+			LdkEvent::StaticInvoiceRequested { recipient_id, invoice_slot, reply_path } => {
+				let invoice = self
+					.static_invoice_store
+					.handle_static_invoice_requested(recipient_id, invoice_slot)
+					.await;
+
+				match invoice {
+					Ok(Some(invoice)) => {
+						if let Err(_) =
+							self.channel_manager.send_static_invoice(invoice, reply_path)
+						{
+							log_error!(self.logger, "Failed to send static invoice");
+						}
+					},
+					Ok(None) => {},
+					Err(e) => {
+						log_error!(self.logger, "Failed to retrieve static invoice: {}", e);
+					},
+				}
 			},
 			LdkEvent::FundingTransactionReadyForSigning { .. } => {
 				debug_assert!(false, "We currently don't support interactive-tx, so this event should never be emitted.");

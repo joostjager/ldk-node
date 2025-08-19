@@ -157,6 +157,10 @@ interface Node {
 	boolean verify_signature([ByRef]sequence<u8> msg, [ByRef]string sig, [ByRef]PublicKey pkey);
 	[Throws=NodeError]
 	bytes export_pathfinding_scores();
+	[Throws=NodeError]
+	void set_paths_to_static_invoice_server(sequence<u8> paths);
+	[Throws=NodeError]
+	sequence<u8> blinded_paths_for_async_recipient(sequence<u8> recipient_id);
 };
 
 [Enum]
@@ -209,6 +213,8 @@ interface Bolt12Payment {
 	Bolt12Invoice request_refund_payment([ByRef]Refund refund);
 	[Throws=NodeError]
 	Refund initiate_refund(u64 amount_msat, u32 expiry_secs, u64? quantity, string? payer_note);
+	[Throws=NodeError]
+	Offer get_async_receive_offer();
 };
 
 interface SpontaneousPayment {
@@ -311,6 +317,8 @@ enum NodeError {
 	"InsufficientFunds",
 	"LiquiditySourceUnavailable",
 	"LiquidityFeeTooHigh",
+	"InvalidBlindedPaths",
+	"OperationFailed",
 };
 
 dictionary NodeStatus {
