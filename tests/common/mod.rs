@@ -10,6 +10,7 @@
 
 pub(crate) mod logging;
 
+use ldk_node::logger::LogLevel;
 use logging::TestLogWriter;
 
 use ldk_node::config::{Config, ElectrumSyncConfig, EsploraSyncConfig};
@@ -287,11 +288,14 @@ pub(crate) fn setup_two_nodes(
 	anchors_trusted_no_reserve: bool,
 ) -> (TestNode, TestNode) {
 	println!("== Node A ==");
-	let config_a = random_config(anchor_channels);
+	let mut config_a = random_config(anchor_channels);
+	config_a.node_config.storage_dir_path = "/tmp/node_a".into();
+
 	let node_a = setup_node(chain_source, config_a, None);
 
 	println!("\n== Node B ==");
 	let mut config_b = random_config(anchor_channels);
+	config_b.node_config.storage_dir_path = "/tmp/node_b".into();
 	if allow_0conf {
 		config_b.node_config.trusted_peers_0conf.push(node_a.node_id());
 	}
@@ -352,7 +356,7 @@ pub(crate) fn setup_node(
 
 	match &config.log_writer {
 		TestLogWriter::FileWriter => {
-			builder.set_filesystem_logger(None, None);
+			builder.set_filesystem_logger(None, Some(LogLevel::Trace));
 		},
 		TestLogWriter::LogFacade => {
 			builder.set_log_facade_logger();
