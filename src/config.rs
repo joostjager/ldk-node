@@ -330,6 +330,8 @@ pub(crate) fn default_user_config(config: &Config) -> UserConfig {
 		user_config.channel_handshake_limits.force_announced_channel_preference = true;
 	}
 
+	user_config.enable_htlc_hold = true;
+
 	user_config
 }
 
