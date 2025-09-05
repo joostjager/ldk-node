@@ -5,6 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. You may not use this file except in
 // accordance with one or both of these licenses.
 
+use crate::om_mailbox::OnionMessageMailbox;
 use crate::payment::asynchronous::static_invoice_store::StaticInvoiceStore;
 use crate::types::{CustomTlvRecord, DynStore, PaymentStore, Sweeper, Wallet};
 use crate::{
@@ -459,6 +460,7 @@ where
 	logger: L,
 	config: Arc<Config>,
 	static_invoice_store: Option<StaticInvoiceStore>,
+	om_mailbox: OnionMessageMailbox,
 }
 
 impl<L: Deref + Clone + Sync + Send + 'static> EventHandler<L>
@@ -472,8 +474,8 @@ where
 		output_sweeper: Arc<Sweeper>, network_graph: Arc<Graph>,
 		liquidity_source: Option<Arc<LiquiditySource<Arc<Logger>>>>,
 		payment_store: Arc<PaymentStore>, peer_store: Arc<PeerStore<L>>,
-		static_invoice_store: Option<StaticInvoiceStore>, runtime: Arc<Runtime>, logger: L,
-		config: Arc<Config>,
+		static_invoice_store: Option<StaticInvoiceStore>, om_mailbox: OnionMessageMailbox,
+		runtime: Arc<Runtime>, logger: L, config: Arc<Config>,
 	) -> Self {
 		Self {
 			event_queue,
@@ -490,6 +492,7 @@ where
 			runtime,
 			config,
 			static_invoice_store,
+			om_mailbox,
 		}
 	}
 
@@ -1491,11 +1494,11 @@ where
 
 				self.bump_tx_event_handler.handle_event(&bte).await;
 			},
-			LdkEvent::OnionMessageIntercepted { .. } => {
-				debug_assert!(false, "We currently don't support onion message interception, so this event should never be emitted.");
+			LdkEvent::OnionMessageIntercepted { peer_node_id, message } => {
+				self.om_mailbox.onion_message_intercepted(peer_node_id, message);
 			},
-			LdkEvent::OnionMessagePeerConnected { .. } => {
-				debug_assert!(false, "We currently don't support onion message interception, so this event should never be emitted.");
+			LdkEvent::OnionMessagePeerConnected { peer_node_id } => {
+				self.om_mailbox.onion_message_peer_connected(peer_node_id);
 			},
 
 			LdkEvent::PersistStaticInvoice {

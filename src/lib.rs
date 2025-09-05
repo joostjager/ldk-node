@@ -92,6 +92,7 @@ pub mod io;
 pub mod liquidity;
 pub mod logger;
 mod message_handler;
+mod om_mailbox;
 pub mod payment;
 mod peer_store;
 mod runtime;
@@ -170,6 +171,8 @@ use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+use crate::om_mailbox::OnionMessageMailbox;
 
 #[cfg(feature = "uniffi")]
 uniffi::include_scaffolding!("ldk_node");
@@ -504,6 +507,7 @@ impl Node {
 		} else {
 			None
 		};
+		let om_mailbox = OnionMessageMailbox::new(Arc::clone(&self.onion_messenger));
 
 		let event_handler = Arc::new(EventHandler::new(
 			Arc::clone(&self.event_queue),
@@ -517,6 +521,7 @@ impl Node {
 			Arc::clone(&self.payment_store),
 			Arc::clone(&self.peer_store),
 			static_invoice_store,
+			om_mailbox,
 			Arc::clone(&self.runtime),
 			Arc::clone(&self.logger),
 			Arc::clone(&self.config),
