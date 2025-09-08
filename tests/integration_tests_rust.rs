@@ -1136,16 +1136,25 @@ fn static_invoice_server() {
 	let chain_source = TestChainSource::Esplora(&electrsd);
 
 	let mut config_sender = random_config(true);
+	config_sender.node_config.storage_dir_path = "/tmp/node_sender".into();
+	config_sender.node_config.listening_addresses = None;
+	config_sender.node_config.node_alias = None;
 	let node_sender = setup_node(&chain_source, config_sender, None);
 
 	let mut config_sender_lsp = random_config(true);
+	config_sender_lsp.node_config.storage_dir_path = "/tmp/node_sender_lsp".into();
+	config_sender_lsp.node_config.async_payment_services_enabled = true;
 	let node_sender_lsp = setup_node(&chain_source, config_sender_lsp, None);
 
 	let mut config_receiver_lsp = random_config(true);
+	config_receiver_lsp.node_config.storage_dir_path = "/tmp/node_receiver_lsp".into();
 	config_receiver_lsp.node_config.async_payment_services_enabled = true;
 	let node_receiver_lsp = setup_node(&chain_source, config_receiver_lsp, None);
 
 	let mut config_receiver = random_config(true);
+	config_receiver.node_config.storage_dir_path = "/tmp/node_receiver".into();
+	config_receiver.node_config.listening_addresses = None;
+	config_receiver.node_config.node_alias = None;
 	let node_receiver = setup_node(&chain_source, config_receiver, None);
 
 	let address_sender = node_sender.onchain_payment().new_address().unwrap();
@@ -1165,9 +1174,9 @@ fn static_invoice_server() {
 	node_receiver_lsp.sync_wallets().unwrap();
 	node_receiver.sync_wallets().unwrap();
 
-	open_channel(&node_sender, &node_sender_lsp, 400_000, true, &electrsd);
+	open_channel(&node_sender, &node_sender_lsp, 400_000, false, &electrsd);
 	open_channel(&node_sender_lsp, &node_receiver_lsp, 400_000, true, &electrsd);
-	open_channel(&node_receiver_lsp, &node_receiver, 400_000, true, &electrsd);
+	open_channel(&node_receiver, &node_receiver_lsp, 400_000, false, &electrsd);
 
 	generate_blocks_and_wait(&bitcoind.client, &electrsd.client, 6);
 
@@ -1190,19 +1199,38 @@ fn static_invoice_server() {
 			.filter(|n| {
 				node.network_graph().node(n).map_or(false, |info| info.announcement_info.is_some())
 			})
-			.count() >= 4
+			.count() >= 2
 	};
 
 	// Wait for everyone to see all channels and node announcements.
-	while node_sender.network_graph().list_channels().len() < 3
-		|| node_sender_lsp.network_graph().list_channels().len() < 3
-		|| node_receiver_lsp.network_graph().list_channels().len() < 3
-		|| node_receiver.network_graph().list_channels().len() < 3
+	while node_sender.network_graph().list_channels().len() < 1
+		|| node_sender_lsp.network_graph().list_channels().len() < 1
+		|| node_receiver_lsp.network_graph().list_channels().len() < 1
+		|| node_receiver.network_graph().list_channels().len() < 1
 		|| !has_node_announcements(&node_sender)
 		|| !has_node_announcements(&node_sender_lsp)
 		|| !has_node_announcements(&node_receiver_lsp)
 		|| !has_node_announcements(&node_receiver)
 	{
+		println!("Sender channels visible: {}", node_sender.network_graph().list_channels().len());
+		println!(
+			"Sender LSP channels visible: {}",
+			node_sender_lsp.network_graph().list_channels().len()
+		);
+		println!(
+			"Receiver LSP channels visible: {}",
+			node_receiver_lsp.network_graph().list_channels().len()
+		);
+		println!(
+			"Receiver channels visible: {}",
+			node_receiver.network_graph().list_channels().len()
+		);
+
+		println!("Two node announcements visible: {}", has_node_announcements(&node_sender));
+		println!("Two node announcements visible: {}", has_node_announcements(&node_sender_lsp));
+		println!("Two node announcements visible: {}", has_node_announcements(&node_receiver_lsp));
+		println!("Two node announcements visible: {}", has_node_announcements(&node_receiver));
+
 		std::thread::sleep(std::time::Duration::from_millis(100));
 	}
 
@@ -1219,8 +1247,16 @@ fn static_invoice_server() {
 		std::thread::sleep(std::time::Duration::from_millis(100));
 	};
 
+	node_receiver.stop().unwrap();
+
 	let payment_id =
 		node_sender.bolt12_payment().send_using_amount(&offer, 5_000, None, None).unwrap();
+
+	println!("Starting sleep");
+	std::thread::sleep(std::time::Duration::from_millis(5000));
+	println!("Finished sleep, restarting receiver");
+
+	node_receiver.start().unwrap();
 
 	expect_payment_successful_event!(node_sender, Some(payment_id), None);
 }
