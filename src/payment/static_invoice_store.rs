@@ -50,22 +50,31 @@ impl StaticInvoiceStore {
 	}
 
 	pub(crate) async fn handle_static_invoice_requested(
-		&self, recipient_id: Vec<u8>, invoice_slot: u16,
+		&self, recipient_id: &[u8], invoice_slot: u16,
 	) -> Result<Option<StaticInvoice>, lightning::io::Error> {
 		Self::check_rate_limit(&self.request_rate_limiter, &recipient_id)?;
 
 		let (secondary_namespace, key) = Self::get_storage_location(invoice_slot, recipient_id);
 
-		self.kv_store.read(STATIC_INVOICES_PRIMARY_NAMESPACE, &secondary_namespace, &key).and_then(
-			|data| {
+		self.kv_store
+			.read(STATIC_INVOICES_PRIMARY_NAMESPACE, &secondary_namespace, &key)
+			.and_then(|data| {
 				data.try_into().map(Some).map_err(|e| {
 					lightning::io::Error::new(
 						lightning::io::ErrorKind::InvalidData,
 						format!("Failed to parse static invoice: {:?}", e),
 					)
 				})
-			},
-		)
+			})
+			.or_else(
+				|e| {
+					if e.kind() == lightning::io::ErrorKind::NotFound {
+						Ok(None)
+					} else {
+						Err(e)
+					}
+				},
+			)
 	}
 
 	pub(crate) async fn handle_persist_static_invoice(
@@ -73,7 +82,7 @@ impl StaticInvoiceStore {
 	) -> Result<(), lightning::io::Error> {
 		Self::check_rate_limit(&self.persist_rate_limiter, &recipient_id)?;
 
-		let (secondary_namespace, key) = Self::get_storage_location(invoice_slot, recipient_id);
+		let (secondary_namespace, key) = Self::get_storage_location(invoice_slot, &recipient_id);
 
 		let mut buf = Vec::new();
 		invoice.write(&mut buf)?;
@@ -81,11 +90,175 @@ impl StaticInvoiceStore {
 		self.kv_store.write(STATIC_INVOICES_PRIMARY_NAMESPACE, &secondary_namespace, &key, buf)
 	}
 
-	fn get_storage_location(invoice_slot: u16, recipient_id: Vec<u8>) -> (String, String) {
-		let hash = Sha256::hash(&recipient_id).to_byte_array();
+	fn get_storage_location(invoice_slot: u16, recipient_id: &[u8]) -> (String, String) {
+		let hash = Sha256::hash(recipient_id).to_byte_array();
 		let secondary_namespace = hex_utils::to_string(&hash);
 
 		let key = format!("{:05}", invoice_slot);
 		(secondary_namespace, key)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{sync::Arc, time::Duration};
+
+	use bitcoin::{
+		key::{Keypair, Secp256k1},
+		secp256k1::{PublicKey, SecretKey},
+	};
+	use lightning::blinded_path::{
+		message::BlindedMessagePath,
+		payment::{BlindedPayInfo, BlindedPaymentPath},
+		BlindedHop,
+	};
+	use lightning::ln::inbound_payment::ExpandedKey;
+	use lightning::offers::{
+		nonce::Nonce,
+		offer::OfferBuilder,
+		static_invoice::{StaticInvoice, StaticInvoiceBuilder},
+	};
+	use lightning::sign::EntropySource;
+	use lightning::util::test_utils::TestStore;
+	use lightning_types::features::BlindedHopFeatures;
+
+	use crate::{payment::static_invoice_store::StaticInvoiceStore, types::DynStore};
+
+	#[tokio::test]
+	async fn static_invoice_store_test() {
+		let store: Arc<DynStore> = Arc::new(TestStore::new(false));
+		let static_invoice_store = StaticInvoiceStore::new(Arc::clone(&store));
+
+		let static_invoice = invoice();
+		let recipient_id = vec![1, 1, 1];
+		assert!(static_invoice_store
+			.handle_persist_static_invoice(static_invoice.clone(), 0, recipient_id.clone())
+			.await
+			.is_ok());
+
+		let requested_invoice =
+			static_invoice_store.handle_static_invoice_requested(&recipient_id, 0).await.unwrap();
+
+		assert_eq!(requested_invoice.unwrap(), static_invoice);
+
+		assert!(static_invoice_store
+			.handle_static_invoice_requested(&recipient_id, 1)
+			.await
+			.unwrap()
+			.is_none());
+
+		assert!(static_invoice_store
+			.handle_static_invoice_requested(&[2, 2, 2], 0)
+			.await
+			.unwrap()
+			.is_none());
+	}
+
+	fn invoice() -> StaticInvoice {
+		let node_id = recipient_pubkey();
+		let payment_paths = payment_paths();
+		let now = now();
+		let expanded_key = ExpandedKey::new([42; 32]);
+		let entropy = FixedEntropy {};
+		let nonce = Nonce::from_entropy_source(&entropy);
+		let secp_ctx = Secp256k1::new();
+
+		let offer = OfferBuilder::deriving_signing_pubkey(node_id, &expanded_key, nonce, &secp_ctx)
+			.path(blinded_path())
+			.build()
+			.unwrap();
+
+		StaticInvoiceBuilder::for_offer_using_derived_keys(
+			&offer,
+			payment_paths.clone(),
+			vec![blinded_path()],
+			now,
+			&expanded_key,
+			nonce,
+			&secp_ctx,
+		)
+		.unwrap()
+		.build_and_sign(&secp_ctx)
+		.unwrap()
+	}
+
+	fn now() -> Duration {
+		std::time::SystemTime::now()
+			.duration_since(std::time::SystemTime::UNIX_EPOCH)
+			.expect("SystemTime::now() should come after SystemTime::UNIX_EPOCH")
+	}
+
+	fn payment_paths() -> Vec<BlindedPaymentPath> {
+		vec![
+			BlindedPaymentPath::from_blinded_path_and_payinfo(
+				pubkey(40),
+				pubkey(41),
+				vec![
+					BlindedHop { blinded_node_id: pubkey(43), encrypted_payload: vec![0; 43] },
+					BlindedHop { blinded_node_id: pubkey(44), encrypted_payload: vec![0; 44] },
+				],
+				BlindedPayInfo {
+					fee_base_msat: 1,
+					fee_proportional_millionths: 1_000,
+					cltv_expiry_delta: 42,
+					htlc_minimum_msat: 100,
+					htlc_maximum_msat: 1_000_000_000_000,
+					features: BlindedHopFeatures::empty(),
+				},
+			),
+			BlindedPaymentPath::from_blinded_path_and_payinfo(
+				pubkey(40),
+				pubkey(41),
+				vec![
+					BlindedHop { blinded_node_id: pubkey(45), encrypted_payload: vec![0; 45] },
+					BlindedHop { blinded_node_id: pubkey(46), encrypted_payload: vec![0; 46] },
+				],
+				BlindedPayInfo {
+					fee_base_msat: 1,
+					fee_proportional_millionths: 1_000,
+					cltv_expiry_delta: 42,
+					htlc_minimum_msat: 100,
+					htlc_maximum_msat: 1_000_000_000_000,
+					features: BlindedHopFeatures::empty(),
+				},
+			),
+		]
+	}
+
+	fn blinded_path() -> BlindedMessagePath {
+		BlindedMessagePath::from_blinded_path(
+			pubkey(40),
+			pubkey(41),
+			vec![
+				BlindedHop { blinded_node_id: pubkey(42), encrypted_payload: vec![0; 43] },
+				BlindedHop { blinded_node_id: pubkey(43), encrypted_payload: vec![0; 44] },
+			],
+		)
+	}
+
+	fn pubkey(byte: u8) -> PublicKey {
+		let secp_ctx = Secp256k1::new();
+		PublicKey::from_secret_key(&secp_ctx, &privkey(byte))
+	}
+
+	fn privkey(byte: u8) -> SecretKey {
+		SecretKey::from_slice(&[byte; 32]).unwrap()
+	}
+
+	fn recipient_keys() -> Keypair {
+		let secp_ctx = Secp256k1::new();
+		Keypair::from_secret_key(&secp_ctx, &SecretKey::from_slice(&[43; 32]).unwrap())
+	}
+
+	fn recipient_pubkey() -> PublicKey {
+		recipient_keys().public_key()
+	}
+
+	struct FixedEntropy;
+
+	impl EntropySource for FixedEntropy {
+		fn get_secure_random_bytes(&self) -> [u8; 32] {
+			[42; 32]
+		}
 	}
 }

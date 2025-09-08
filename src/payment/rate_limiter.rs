@@ -60,3 +60,28 @@ impl RateLimiter {
 		self.users.retain(|_, bucket| now.duration_since(bucket.last_refill) < max_idle);
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use crate::payment::rate_limiter::RateLimiter;
+
+	use std::time::Duration;
+
+	#[test]
+	fn rate_limiter_test() {
+		// Test
+		let mut rate_limiter =
+			RateLimiter::new(3, Duration::from_millis(100), Duration::from_secs(1));
+
+		assert!(rate_limiter.allow(b"user1"));
+		assert!(rate_limiter.allow(b"user1"));
+		assert!(rate_limiter.allow(b"user1"));
+		assert!(!rate_limiter.allow(b"user1"));
+		assert!(rate_limiter.allow(b"user2"));
+
+		std::thread::sleep(Duration::from_millis(150));
+
+		assert!(rate_limiter.allow(b"user1"));
+		assert!(rate_limiter.allow(b"user2"));
+	}
+}

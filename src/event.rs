@@ -1520,7 +1520,7 @@ where
 			LdkEvent::StaticInvoiceRequested { recipient_id, invoice_slot, reply_path } => {
 				let invoice = self
 					.static_invoice_store
-					.handle_static_invoice_requested(recipient_id, invoice_slot)
+					.handle_static_invoice_requested(&recipient_id, invoice_slot)
 					.await;
 
 				match invoice {
