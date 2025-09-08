@@ -1145,6 +1145,7 @@ fn static_invoice_server() {
 
 	let mut config_receiver_lsp = random_config(true);
 	config_receiver_lsp.node_config.storage_dir_path = "/tmp/node_receiver_lsp".into();
+	config_receiver_lsp.node_config.async_payment_services_enabled = true;
 	let node_receiver_lsp = setup_node(&chain_source, config_receiver_lsp, None);
 
 	let mut config_receiver = random_config(true);

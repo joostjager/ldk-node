@@ -502,7 +502,11 @@ impl Node {
 			Arc::clone(&self.logger),
 		));
 
-		let static_invoice_store = StaticInvoiceStore::new(Arc::clone(&self.kv_store));
+		let static_invoice_store = if self.config.async_payment_services_enabled {
+			Some(StaticInvoiceStore::new(Arc::clone(&self.kv_store)))
+		} else {
+			None
+		};
 
 		let event_handler = Arc::new(EventHandler::new(
 			Arc::clone(&self.event_queue),
@@ -1511,6 +1515,10 @@ impl Node {
 	pub fn blinded_paths_for_async_recipient(
 		&self, recipient_id: Vec<u8>,
 	) -> Result<Vec<u8>, Error> {
+		if !self.config.async_payment_services_enabled {
+			return Err(Error::AsyncPaymentServicesDisabled);
+		}
+
 		let paths = self
 			.channel_manager
 			.blinded_paths_for_async_recipient(recipient_id, None)

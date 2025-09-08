@@ -458,7 +458,7 @@ where
 	runtime: Arc<Runtime>,
 	logger: L,
 	config: Arc<Config>,
-	static_invoice_store: StaticInvoiceStore,
+	static_invoice_store: Option<StaticInvoiceStore>,
 }
 
 impl<L: Deref + Clone + Sync + Send + 'static> EventHandler<L>
@@ -472,7 +472,7 @@ where
 		output_sweeper: Arc<Sweeper>, network_graph: Arc<Graph>,
 		liquidity_source: Option<Arc<LiquiditySource<Arc<Logger>>>>,
 		payment_store: Arc<PaymentStore>, peer_store: Arc<PeerStore<L>>,
-		static_invoice_store: StaticInvoiceStore, runtime: Arc<Runtime>, logger: L,
+		static_invoice_store: Option<StaticInvoiceStore>, runtime: Arc<Runtime>, logger: L,
 		config: Arc<Config>,
 	) -> Self {
 		Self {
@@ -1504,37 +1504,38 @@ where
 				recipient_id,
 				invoice_persisted_path,
 			} => {
-				match self
-					.static_invoice_store
-					.handle_persist_static_invoice(invoice, invoice_slot, recipient_id)
-					.await
-				{
-					Ok(_) => {},
-					Err(e) => {
-						log_error!(self.logger, "Failed to persist static invoice: {}", e);
-					},
-				};
+				if let Some(store) = self.static_invoice_store.as_ref() {
+					match store
+						.handle_persist_static_invoice(invoice, invoice_slot, recipient_id)
+						.await
+					{
+						Ok(_) => {},
+						Err(e) => {
+							log_error!(self.logger, "Failed to persist static invoice: {}", e);
+						},
+					};
 
-				self.channel_manager.static_invoice_persisted(invoice_persisted_path);
+					self.channel_manager.static_invoice_persisted(invoice_persisted_path);
+				}
 			},
 			LdkEvent::StaticInvoiceRequested { recipient_id, invoice_slot, reply_path } => {
-				let invoice = self
-					.static_invoice_store
-					.handle_static_invoice_requested(&recipient_id, invoice_slot)
-					.await;
+				if let Some(store) = self.static_invoice_store.as_ref() {
+					let invoice =
+						store.handle_static_invoice_requested(&recipient_id, invoice_slot).await;
 
-				match invoice {
-					Ok(Some(invoice)) => {
-						if let Err(e) =
-							self.channel_manager.send_static_invoice(invoice, reply_path)
-						{
-							log_error!(self.logger, "Failed to send static invoice: {:?}", e);
-						}
-					},
-					Ok(None) => {},
-					Err(e) => {
-						log_error!(self.logger, "Failed to retrieve static invoice: {}", e);
-					},
+					match invoice {
+						Ok(Some(invoice)) => {
+							if let Err(e) =
+								self.channel_manager.send_static_invoice(invoice, reply_path)
+							{
+								log_error!(self.logger, "Failed to send static invoice: {:?}", e);
+							}
+						},
+						Ok(None) => {},
+						Err(e) => {
+							log_error!(self.logger, "Failed to retrieve static invoice: {}", e);
+						},
+					}
 				}
 			},
 			LdkEvent::FundingTransactionReadyForSigning { .. } => {

@@ -13,6 +13,7 @@ dictionary Config {
 	u64 probing_liquidity_limit_multiplier;
 	AnchorChannelsConfig? anchor_channels_config;
 	RouteParametersConfig? route_parameters;
+	boolean async_payment_services_enabled;
 };
 
 dictionary AnchorChannelsConfig {
@@ -318,6 +319,7 @@ enum NodeError {
 	"LiquiditySourceUnavailable",
 	"LiquidityFeeTooHigh",
 	"InvalidBlindedPaths",
+	"AsyncPaymentServicesDisabled",
 };
 
 dictionary NodeStatus {
