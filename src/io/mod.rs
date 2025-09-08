@@ -73,3 +73,8 @@ pub(crate) const BDK_WALLET_TX_GRAPH_KEY: &str = "tx_graph";
 pub(crate) const BDK_WALLET_INDEXER_PRIMARY_NAMESPACE: &str = "bdk_wallet";
 pub(crate) const BDK_WALLET_INDEXER_SECONDARY_NAMESPACE: &str = "";
 pub(crate) const BDK_WALLET_INDEXER_KEY: &str = "indexer";
+
+// Static invoices will be persisted at "static_invoices/<sha256(recipient_id)>/<invoice_slot>".
+//
+// Example: static_invoices/039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81/001f
+pub(crate) const STATIC_INVOICES_PRIMARY_NAMESPACE: &str = "static_invoices";

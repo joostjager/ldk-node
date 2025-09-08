@@ -451,15 +451,17 @@ impl Bolt12Payment {
 		Ok(maybe_wrap(refund))
 	}
 
-	/// Retrieve an [`Offer`] for receiving async payments as an often-offline recipient. Will only return an offer if
-	/// [`Node::set_paths_to_static_invoice_server`] was called and we succeeded in interactively building a
-	/// [`StaticInvoice`] with the static invoice server.
+	/// Retrieve an [`Offer`] for receiving async payments as an often-offline recipient.
+	///
+	/// Will only return an offer if [`Node::set_paths_to_static_invoice_server`] was called and we succeeded in
+	/// interactively building a [`StaticInvoice`] with the static invoice server.
 	///
 	/// Useful for posting offers to receive payments later, such as posting an offer on a website.
 	///
 	/// [`Node::set_paths_to_static_invoice_server`]: crate::Node::set_paths_to_static_invoice_server
 	/// [`StaticInvoice`]: lightning::offers::static_invoice::StaticInvoice
-	pub fn get_async_receive_offer(&self) -> Result<Offer, Error> {
+	/// [`Offer`]: lightning::offers::offer::Offer
+	pub fn receive_async(&self) -> Result<Offer, Error> {
 		self.channel_manager
 			.get_async_receive_offer()
 			.map(maybe_wrap)

@@ -2,9 +2,11 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 /// Implements a leaky-bucket style rate limiter parameterized by the max capacity of the bucket, the refill interval,
-/// and the max idle duration. For every passing of the refill interval, one token is added to the bucket, up to the
-/// maximum capacity. When the bucket has remained at the maximum capacity for longer than the max idle duration, it is
-/// removed to prevent memory leakage.
+/// and the max idle duration.
+///
+/// For every passing of the refill interval, one token is added to the bucket, up to the maximum capacity. When the
+/// bucket has remained at the maximum capacity for longer than the max idle duration, it is removed to prevent memory
+/// leakage.
 pub(crate) struct RateLimiter {
 	users: HashMap<Vec<u8>, Bucket>,
 	capacity: u32,

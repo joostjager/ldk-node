@@ -5,9 +5,8 @@
 // http://opensource.org/licenses/MIT>, at your option. You may not use this file except in
 // accordance with one or both of these licenses.
 
-use crate::static_invoice_store::StaticInvoiceStore;
+use crate::payment::static_invoice_store::StaticInvoiceStore;
 use crate::types::{CustomTlvRecord, DynStore, PaymentStore, Sweeper, Wallet};
-
 use crate::{
 	hex_utils, BumpTransactionEventHandler, ChannelManager, Error, Graph, PeerInfo, PeerStore,
 	UserChannelId,
@@ -1526,10 +1525,10 @@ where
 
 				match invoice {
 					Ok(Some(invoice)) => {
-						if let Err(_) =
+						if let Err(e) =
 							self.channel_manager.send_static_invoice(invoice, reply_path)
 						{
-							log_error!(self.logger, "Failed to send static invoice");
+							log_error!(self.logger, "Failed to send static invoice: {:?}", e);
 						}
 					},
 					Ok(None) => {},

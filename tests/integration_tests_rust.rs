@@ -1214,7 +1214,7 @@ fn static_invoice_server() {
 	node_receiver.set_paths_to_static_invoice_server(blinded_paths).unwrap();
 
 	let offer = loop {
-		if let Ok(offer) = node_receiver.bolt12_payment().get_async_receive_offer() {
+		if let Ok(offer) = node_receiver.bolt12_payment().receive_async() {
 			break offer;
 		}
 

@@ -10,7 +10,9 @@
 mod bolt11;
 mod bolt12;
 mod onchain;
+mod rate_limiter;
 mod spontaneous;
+pub(crate) mod static_invoice_store;
 pub(crate) mod store;
 mod unified_qr;
 

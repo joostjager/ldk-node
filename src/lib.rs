@@ -94,9 +94,7 @@ pub mod logger;
 mod message_handler;
 pub mod payment;
 mod peer_store;
-mod rate_limiter;
 mod runtime;
-mod static_invoice_store;
 mod tx_broadcaster;
 mod types;
 mod wallet;
@@ -138,6 +136,7 @@ use gossip::GossipSource;
 use graph::NetworkGraph;
 use io::utils::write_node_metrics;
 use liquidity::{LSPS1Liquidity, LiquiditySource};
+use payment::static_invoice_store::StaticInvoiceStore;
 use payment::{
 	Bolt11Payment, Bolt12Payment, OnchainPayment, PaymentDetails, SpontaneousPayment,
 	UnifiedQrPayment,
@@ -174,8 +173,6 @@ use std::net::ToSocketAddrs;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
-use crate::static_invoice_store::StaticInvoiceStore;
 
 #[cfg(feature = "uniffi")]
 uniffi::include_scaffolding!("ldk_node");
@@ -1517,10 +1514,10 @@ impl Node {
 		let paths = self
 			.channel_manager
 			.blinded_paths_for_async_recipient(recipient_id, None)
-			.or(Err(Error::OperationFailed))?;
+			.or(Err(Error::InvalidBlindedPaths))?;
 
 		let mut bytes = Vec::new();
-		paths.write(&mut bytes).or(Err(Error::OperationFailed))?;
+		paths.write(&mut bytes).or(Err(Error::InvalidBlindedPaths))?;
 
 		Ok(bytes)
 	}

@@ -1,10 +1,15 @@
-use crate::{hex_utils, rate_limiter::RateLimiter, types::DynStore};
-use bitcoin::hashes::{sha256, Hash};
+use crate::hex_utils;
+use crate::io::STATIC_INVOICES_PRIMARY_NAMESPACE;
+use crate::payment::rate_limiter::RateLimiter;
+use crate::types::DynStore;
+
+use bitcoin::hashes::sha256::Hash as Sha256;
+use bitcoin::hashes::Hash;
+
 use lightning::{offers::static_invoice::StaticInvoice, util::ser::Writeable};
-use std::{
-	sync::{Arc, Mutex},
-	time::Duration,
-};
+
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 pub(crate) struct StaticInvoiceStore {
 	kv_store: Arc<DynStore>,
@@ -13,12 +18,6 @@ pub(crate) struct StaticInvoiceStore {
 }
 
 impl StaticInvoiceStore {
-	// Static invoices are stored at "static_invoices/<sha256(recipient_id)>/<invoice_slot>".
-	//
-	// Example:
-	// static_invoices/039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81/001f
-	const PRIMARY_NAMESPACE: &str = "static_invoices";
-
 	const RATE_LIMITER_BUCKET_CAPACITY: u32 = 5;
 	const RATE_LIMITER_REFILL_INTERVAL: Duration = Duration::from_millis(100);
 	const RATE_LIMITER_MAX_IDLE: Duration = Duration::from_secs(600);
@@ -57,14 +56,16 @@ impl StaticInvoiceStore {
 
 		let (secondary_namespace, key) = Self::get_storage_location(invoice_slot, recipient_id);
 
-		self.kv_store.read(Self::PRIMARY_NAMESPACE, &secondary_namespace, &key).and_then(|data| {
-			data.try_into().map(Some).map_err(|e| {
-				lightning::io::Error::new(
-					lightning::io::ErrorKind::InvalidData,
-					format!("Failed to parse static invoice: {:?}", e),
-				)
-			})
-		})
+		self.kv_store.read(STATIC_INVOICES_PRIMARY_NAMESPACE, &secondary_namespace, &key).and_then(
+			|data| {
+				data.try_into().map(Some).map_err(|e| {
+					lightning::io::Error::new(
+						lightning::io::ErrorKind::InvalidData,
+						format!("Failed to parse static invoice: {:?}", e),
+					)
+				})
+			},
+		)
 	}
 
 	pub(crate) async fn handle_persist_static_invoice(
@@ -77,14 +78,14 @@ impl StaticInvoiceStore {
 		let mut buf = Vec::new();
 		invoice.write(&mut buf)?;
 
-		self.kv_store.write(Self::PRIMARY_NAMESPACE, &secondary_namespace, &key, buf)
+		self.kv_store.write(STATIC_INVOICES_PRIMARY_NAMESPACE, &secondary_namespace, &key, buf)
 	}
 
 	fn get_storage_location(invoice_slot: u16, recipient_id: Vec<u8>) -> (String, String) {
-		let hash = sha256::Hash::hash(&recipient_id).to_byte_array();
+		let hash = Sha256::hash(&recipient_id).to_byte_array();
 		let secondary_namespace = hex_utils::to_string(&hash);
 
-		let key = hex_utils::to_string(&invoice_slot.to_be_bytes());
+		let key = format!("{:05}", invoice_slot);
 		(secondary_namespace, key)
 	}
 }
