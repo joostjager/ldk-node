@@ -507,7 +507,7 @@ impl Node {
 		} else {
 			None
 		};
-		let om_mailbox = OnionMessageMailbox::new(Arc::clone(&self.onion_messenger));
+		let om_mailbox = OnionMessageMailbox::new();
 
 		let event_handler = Arc::new(EventHandler::new(
 			Arc::clone(&self.event_queue),
@@ -521,6 +521,7 @@ impl Node {
 			Arc::clone(&self.payment_store),
 			Arc::clone(&self.peer_store),
 			static_invoice_store,
+			Arc::clone(&self.onion_messenger),
 			om_mailbox,
 			Arc::clone(&self.runtime),
 			Arc::clone(&self.logger),

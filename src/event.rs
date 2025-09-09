@@ -7,7 +7,7 @@
 
 use crate::om_mailbox::OnionMessageMailbox;
 use crate::payment::asynchronous::static_invoice_store::StaticInvoiceStore;
-use crate::types::{CustomTlvRecord, DynStore, PaymentStore, Sweeper, Wallet};
+use crate::types::{CustomTlvRecord, DynStore, OnionMessenger, PaymentStore, Sweeper, Wallet};
 use crate::{
 	hex_utils, BumpTransactionEventHandler, ChannelManager, Error, Graph, PeerInfo, PeerStore,
 	UserChannelId,
@@ -460,6 +460,7 @@ where
 	logger: L,
 	config: Arc<Config>,
 	static_invoice_store: Option<StaticInvoiceStore>,
+	onion_messenger: Arc<OnionMessenger>,
 	om_mailbox: OnionMessageMailbox,
 }
 
@@ -474,8 +475,8 @@ where
 		output_sweeper: Arc<Sweeper>, network_graph: Arc<Graph>,
 		liquidity_source: Option<Arc<LiquiditySource<Arc<Logger>>>>,
 		payment_store: Arc<PaymentStore>, peer_store: Arc<PeerStore<L>>,
-		static_invoice_store: Option<StaticInvoiceStore>, om_mailbox: OnionMessageMailbox,
-		runtime: Arc<Runtime>, logger: L, config: Arc<Config>,
+		static_invoice_store: Option<StaticInvoiceStore>, onion_messenger: Arc<OnionMessenger>,
+		om_mailbox: OnionMessageMailbox, runtime: Arc<Runtime>, logger: L, config: Arc<Config>,
 	) -> Self {
 		Self {
 			event_queue,
@@ -492,6 +493,7 @@ where
 			runtime,
 			config,
 			static_invoice_store,
+			onion_messenger,
 			om_mailbox,
 		}
 	}
@@ -1498,7 +1500,11 @@ where
 				self.om_mailbox.onion_message_intercepted(peer_node_id, message);
 			},
 			LdkEvent::OnionMessagePeerConnected { peer_node_id } => {
-				self.om_mailbox.onion_message_peer_connected(peer_node_id);
+				let messages = self.om_mailbox.onion_message_peer_connected(peer_node_id);
+
+				for message in messages {
+					let _ = self.onion_messenger.forward_onion_message(message, &peer_node_id);
+				}
 			},
 
 			LdkEvent::PersistStaticInvoice {
