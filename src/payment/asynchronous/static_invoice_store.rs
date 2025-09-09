@@ -1,6 +1,6 @@
 use crate::hex_utils;
 use crate::io::STATIC_INVOICES_PRIMARY_NAMESPACE;
-use crate::payment::rate_limiter::RateLimiter;
+use crate::payment::asynchronous::rate_limiter::RateLimiter;
 use crate::types::DynStore;
 
 use bitcoin::hashes::sha256::Hash as Sha256;
@@ -122,7 +122,8 @@ mod tests {
 	use lightning::util::test_utils::TestStore;
 	use lightning_types::features::BlindedHopFeatures;
 
-	use crate::{payment::static_invoice_store::StaticInvoiceStore, types::DynStore};
+	use crate::payment::asynchronous::static_invoice_store::StaticInvoiceStore;
+	use crate::types::DynStore;
 
 	#[tokio::test]
 	async fn static_invoice_store_test() {

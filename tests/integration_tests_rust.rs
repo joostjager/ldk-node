@@ -1211,8 +1211,9 @@ fn static_invoice_server() {
 	}
 
 	let recipient_id = vec![1, 2, 3];
-	let blinded_paths = node_receiver_lsp.blinded_paths_for_async_recipient(recipient_id).unwrap();
-	node_receiver.set_paths_to_static_invoice_server(blinded_paths).unwrap();
+	let blinded_paths =
+		node_receiver_lsp.bolt12_payment().blinded_paths_for_async_recipient(recipient_id).unwrap();
+	node_receiver.bolt12_payment().set_paths_to_static_invoice_server(blinded_paths).unwrap();
 
 	let offer = loop {
 		if let Ok(offer) = node_receiver.bolt12_payment().receive_async() {

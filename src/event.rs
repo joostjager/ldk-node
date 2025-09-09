@@ -5,7 +5,7 @@
 // http://opensource.org/licenses/MIT>, at your option. You may not use this file except in
 // accordance with one or both of these licenses.
 
-use crate::payment::static_invoice_store::StaticInvoiceStore;
+use crate::payment::asynchronous::static_invoice_store::StaticInvoiceStore;
 use crate::types::{CustomTlvRecord, DynStore, PaymentStore, Sweeper, Wallet};
 use crate::{
 	hex_utils, BumpTransactionEventHandler, ChannelManager, Error, Graph, PeerInfo, PeerStore,
