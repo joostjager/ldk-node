@@ -1202,6 +1202,13 @@ fn static_invoice_server() {
 			.count() >= 2
 	};
 
+	let ready = |node: &ldk_node::Node| {
+		matches!(
+			node.list_channels().as_slice(),
+			[chan] if chan.counterparty_forwarding_info_fee_base_msat.is_some()
+		)
+	};
+
 	// Wait for everyone to see all channels and node announcements.
 	while node_sender.network_graph().list_channels().len() < 1
 		|| node_sender_lsp.network_graph().list_channels().len() < 1
@@ -1211,6 +1218,7 @@ fn static_invoice_server() {
 		|| !has_node_announcements(&node_sender_lsp)
 		|| !has_node_announcements(&node_receiver_lsp)
 		|| !has_node_announcements(&node_receiver)
+		|| !ready(&node_receiver)
 	{
 		println!("Sender channels visible: {}", node_sender.network_graph().list_channels().len());
 		println!(
@@ -1231,8 +1239,12 @@ fn static_invoice_server() {
 		println!("Two node announcements visible: {}", has_node_announcements(&node_receiver_lsp));
 		println!("Two node announcements visible: {}", has_node_announcements(&node_receiver));
 
+		println!("Receiver chan counterparty forwarding info available: {}", ready(&node_receiver));
+
 		std::thread::sleep(std::time::Duration::from_millis(100));
 	}
+
+	std::thread::sleep(std::time::Duration::from_millis(3000));
 
 	let recipient_id = vec![1, 2, 3];
 	let blinded_paths =
