@@ -1136,20 +1136,16 @@ fn static_invoice_server() {
 	let chain_source = TestChainSource::Esplora(&electrsd);
 
 	let mut config_sender = random_config(true);
-	config_sender.node_config.storage_dir_path = "/tmp/node_sender".into();
 	let node_sender = setup_node(&chain_source, config_sender, None);
 
 	let mut config_sender_lsp = random_config(true);
-	config_sender_lsp.node_config.storage_dir_path = "/tmp/node_sender_lsp".into();
 	let node_sender_lsp = setup_node(&chain_source, config_sender_lsp, None);
 
 	let mut config_receiver_lsp = random_config(true);
-	config_receiver_lsp.node_config.storage_dir_path = "/tmp/node_receiver_lsp".into();
 	config_receiver_lsp.node_config.async_payment_services_enabled = true;
 	let node_receiver_lsp = setup_node(&chain_source, config_receiver_lsp, None);
 
 	let mut config_receiver = random_config(true);
-	config_receiver.node_config.storage_dir_path = "/tmp/node_receiver".into();
 	let node_receiver = setup_node(&chain_source, config_receiver, None);
 
 	let address_sender = node_sender.onchain_payment().new_address().unwrap();
