@@ -56,6 +56,7 @@ impl OnionMessageMailbox {
 	}
 }
 
+#[cfg(test)]
 mod tests {
 	use bitcoin::{
 		key::Secp256k1,
