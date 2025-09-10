@@ -13,9 +13,9 @@ use common::{
 	expect_payment_claimable_event, expect_payment_received_event, expect_payment_successful_event,
 	generate_blocks_and_wait,
 	logging::{init_log_logger, validate_log_entry, TestLogWriter},
-	open_channel, premine_and_distribute_funds, premine_blocks, prepare_rbf, random_config,
-	random_listening_addresses, setup_bitcoind_and_electrsd, setup_builder, setup_node,
-	setup_two_nodes, wait_for_tx, TestChainSource, TestSyncStore,
+	open_channel, open_channel_push_amt, premine_and_distribute_funds, premine_blocks, prepare_rbf,
+	random_config, random_listening_addresses, setup_bitcoind_and_electrsd, setup_builder,
+	setup_node, setup_two_nodes, wait_for_tx, TestChainSource, TestSyncStore,
 };
 
 use ldk_node::config::EsploraSyncConfig;
@@ -1176,7 +1176,14 @@ fn static_invoice_server() {
 
 	open_channel(&node_sender, &node_sender_lsp, 400_000, false, &electrsd);
 	open_channel(&node_sender_lsp, &node_receiver_lsp, 400_000, true, &electrsd);
-	open_channel(&node_receiver, &node_receiver_lsp, 400_000, false, &electrsd);
+	open_channel_push_amt(
+		&node_receiver,
+		&node_receiver_lsp,
+		400_000,
+		Some(200_000_000),
+		false,
+		&electrsd,
+	);
 
 	generate_blocks_and_wait(&bitcoind.client, &electrsd.client, 6);
 
@@ -1244,7 +1251,7 @@ fn static_invoice_server() {
 		std::thread::sleep(std::time::Duration::from_millis(100));
 	}
 
-	std::thread::sleep(std::time::Duration::from_millis(3000));
+	println!("Balances: {:?}", node_receiver.list_balances());
 
 	let recipient_id = vec![1, 2, 3];
 	let blinded_paths =

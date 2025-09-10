@@ -1378,6 +1378,10 @@ fn build_with_store_internal(
 			100;
 	}
 
+	if config.async_payment_services_enabled {
+		user_config.accept_forwards_to_priv_channels = true;
+	}
+
 	let message_router =
 		Arc::new(MessageRouter::new(Arc::clone(&network_graph), Arc::clone(&keys_manager)));
 
@@ -1448,17 +1452,31 @@ fn build_with_store_internal(
 	}
 
 	// Initialize the PeerManager
-	let onion_messenger: Arc<OnionMessenger> = Arc::new(OnionMessenger::new(
-		Arc::clone(&keys_manager),
-		Arc::clone(&keys_manager),
-		Arc::clone(&logger),
-		Arc::clone(&channel_manager),
-		message_router,
-		Arc::clone(&channel_manager),
-		Arc::clone(&channel_manager),
-		IgnoringMessageHandler {},
-		IgnoringMessageHandler {},
-	));
+	let onion_messenger: Arc<OnionMessenger> = if config.async_payment_services_enabled {
+		Arc::new(OnionMessenger::new_with_offline_peer_interception(
+			Arc::clone(&keys_manager),
+			Arc::clone(&keys_manager),
+			Arc::clone(&logger),
+			Arc::clone(&channel_manager),
+			message_router,
+			Arc::clone(&channel_manager),
+			Arc::clone(&channel_manager),
+			IgnoringMessageHandler {},
+			IgnoringMessageHandler {},
+		))
+	} else {
+		Arc::new(OnionMessenger::new(
+			Arc::clone(&keys_manager),
+			Arc::clone(&keys_manager),
+			Arc::clone(&logger),
+			Arc::clone(&channel_manager),
+			message_router,
+			Arc::clone(&channel_manager),
+			Arc::clone(&channel_manager),
+			IgnoringMessageHandler {},
+			IgnoringMessageHandler {},
+		))
+	};
 	let ephemeral_bytes: [u8; 32] = keys_manager.get_secure_random_bytes();
 
 	// Initialize the GossipSource
