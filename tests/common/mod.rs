@@ -237,6 +237,12 @@ pub(crate) fn random_node_alias() -> Option<NodeAlias> {
 }
 
 pub(crate) fn random_config(anchor_channels: bool) -> TestConfig {
+	random_config_with_stdout_logging(anchor_channels, false)
+}
+
+pub(crate) fn random_config_with_stdout_logging(
+	anchor_channels: bool, stdout_logging: bool,
+) -> TestConfig {
 	let mut node_config = Config::default();
 
 	if !anchor_channels {
@@ -258,7 +264,16 @@ pub(crate) fn random_config(anchor_channels: bool) -> TestConfig {
 	println!("Setting random LDK node alias: {:?}", alias);
 	node_config.node_alias = alias;
 
-	TestConfig { node_config, ..Default::default() }
+	let log_writer = if stdout_logging {
+		let node_id = alias
+			.map(|a| String::from_utf8_lossy(&a.0).trim_end_matches('\0').to_string())
+			.unwrap_or_else(|| "unknown".to_string());
+		TestLogWriter::Custom(Arc::new(logging::MultiNodeLogger::new(node_id)))
+	} else {
+		TestLogWriter::default()
+	};
+
+	TestConfig { node_config, log_writer, ..Default::default() }
 }
 
 #[cfg(feature = "uniffi")]
@@ -330,17 +345,60 @@ pub(crate) fn setup_two_nodes(
 	)
 }
 
+pub(crate) fn setup_two_nodes_with_stdout_logging(
+	chain_source: &TestChainSource, allow_0conf: bool, anchor_channels: bool,
+	anchors_trusted_no_reserve: bool,
+) -> (TestNode, TestNode) {
+	println!("== Node A ==");
+	let mut config_a = random_config_with_stdout_logging(anchor_channels, true);
+	if allow_0conf {
+		// Node B will be created with node_a as trusted peer, but we need node_a first
+	}
+	let node_a = setup_node(chain_source, config_a.clone());
+
+	println!("\n== Node B ==");
+	let mut config_b = random_config_with_stdout_logging(anchor_channels, true);
+	if allow_0conf {
+		config_b.node_config.trusted_peers_0conf.push(node_a.node_id());
+	}
+	if anchor_channels && anchors_trusted_no_reserve {
+		config_b
+			.node_config
+			.anchor_channels_config
+			.as_mut()
+			.unwrap()
+			.trusted_peers_no_reserve
+			.push(node_a.node_id());
+	}
+	let node_b = setup_node(chain_source, config_b);
+	(node_a, node_b)
+}
+
 pub(crate) fn setup_two_nodes_with_store(
 	chain_source: &TestChainSource, allow_0conf: bool, anchor_channels: bool,
 	anchors_trusted_no_reserve: bool, store_type: TestStoreType,
 ) -> (TestNode, TestNode) {
+	setup_two_nodes_with_config(
+		chain_source,
+		allow_0conf,
+		anchor_channels,
+		anchors_trusted_no_reserve,
+		store_type,
+		false,
+	)
+}
+
+pub(crate) fn setup_two_nodes_with_config(
+	chain_source: &TestChainSource, allow_0conf: bool, anchor_channels: bool,
+	anchors_trusted_no_reserve: bool, store_type: TestStoreType, stdout_logging: bool,
+) -> (TestNode, TestNode) {
 	println!("== Node A ==");
-	let mut config_a = random_config(anchor_channels);
+	let mut config_a = random_config_with_stdout_logging(anchor_channels, stdout_logging);
 	config_a.store_type = store_type;
 	let node_a = setup_node(chain_source, config_a);
 
 	println!("\n== Node B ==");
-	let mut config_b = random_config(anchor_channels);
+	let mut config_b = random_config_with_stdout_logging(anchor_channels, stdout_logging);
 	config_b.store_type = store_type;
 	if allow_0conf {
 		config_b.node_config.trusted_peers_0conf.push(node_a.node_id());
@@ -436,17 +494,22 @@ pub(crate) fn setup_node_for_async_payments(
 pub(crate) async fn generate_blocks_and_wait<E: ElectrumApi>(
 	bitcoind: &BitcoindClient, electrs: &E, num: usize,
 ) {
+	generate_blocks(bitcoind, num);
+	let blockchain_info = bitcoind.get_blockchain_info().expect("failed to get blockchain info");
+	let target_height = blockchain_info.blocks as usize;
+	wait_for_block(electrs, target_height).await;
+}
+
+/// Generate blocks without waiting for Electrs to sync.
+/// Call `wait_for_block` later to sync.
+pub(crate) fn generate_blocks(bitcoind: &BitcoindClient, num: usize) {
 	let _ = bitcoind.create_wallet("ldk_node_test");
 	let _ = bitcoind.load_wallet("ldk_node_test");
 	print!("Generating {} blocks...", num);
-	let blockchain_info = bitcoind.get_blockchain_info().expect("failed to get blockchain info");
-	let cur_height = blockchain_info.blocks;
 	let address = bitcoind.new_address().expect("failed to get new address");
 	// TODO: expect this Result once the WouldBlock issue is resolved upstream.
 	let _block_hashes_res = bitcoind.generate_to_address(num, &address);
-	wait_for_block(electrs, cur_height as usize + num).await;
-	print!(" Done!");
-	println!("\n");
+	print!(" Done!\n");
 }
 
 pub(crate) fn invalidate_blocks(bitcoind: &BitcoindClient, num_blocks: usize) {

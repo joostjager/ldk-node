@@ -23,8 +23,8 @@ use common::{
 	expect_splice_pending_event, generate_blocks_and_wait, open_channel, open_channel_push_amt,
 	premine_and_distribute_funds, premine_blocks, prepare_rbf, random_config,
 	random_listening_addresses, setup_bitcoind_and_electrsd, setup_builder, setup_node,
-	setup_node_for_async_payments, setup_two_nodes, wait_for_tx, TestChainSource, TestStoreType,
-	TestSyncStore,
+	setup_node_for_async_payments, setup_two_nodes, setup_two_nodes_with_config,
+	setup_two_nodes_with_store, wait_for_tx, TestChainSource, TestStoreType, TestSyncStore,
 };
 use ldk_node::config::{AsyncPaymentsRole, EsploraSyncConfig};
 use ldk_node::entropy::NodeEntropy;
@@ -45,7 +45,8 @@ use log::LevelFilter;
 async fn channel_full_cycle() {
 	let (bitcoind, electrsd) = setup_bitcoind_and_electrsd();
 	let chain_source = TestChainSource::Esplora(&electrsd);
-	let (node_a, node_b) = setup_two_nodes(&chain_source, false, true, false);
+	let (node_a, node_b) =
+		setup_two_nodes_with_config(&chain_source, false, true, false, TestStoreType::Sqlite, true);
 	do_channel_full_cycle(node_a, node_b, &bitcoind.client, &electrsd.client, false, true, false)
 		.await;
 }
