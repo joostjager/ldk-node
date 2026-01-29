@@ -8,8 +8,11 @@
 mod common;
 
 use std::collections::HashSet;
+use std::future::Future;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use bitcoin::address::NetworkUnchecked;
 use bitcoin::hashes::sha256::Hash as Sha256Hash;
@@ -33,13 +36,84 @@ use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 	UnifiedPaymentResult,
 };
+use ldk_node::io::sqlite_store::SqliteStore;
 use ldk_node::{Builder, Event, NodeError};
+use lightning::io;
+use lightning::util::persist::{KVStore, KVStoreSync};
 use lightning::ln::channelmanager::PaymentId;
 use lightning::routing::gossip::{NodeAlias, NodeId};
 use lightning::routing::router::RouteParametersConfig;
 use lightning_invoice::{Bolt11InvoiceDescription, Description};
 use lightning_types::payment::{PaymentHash, PaymentPreimage};
 use log::LevelFilter;
+
+/// A wrapper around SqliteStore that adds a configurable delay to write operations.
+struct DelayedKVStore {
+	inner: SqliteStore,
+	write_delay: Duration,
+}
+
+impl DelayedKVStore {
+	fn new(inner: SqliteStore, write_delay: Duration) -> Self {
+		Self { inner, write_delay }
+	}
+}
+
+impl KVStore for DelayedKVStore {
+	fn read(
+		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
+	) -> impl Future<Output = Result<Vec<u8>, io::Error>> + Send + 'static {
+		KVStore::read(&self.inner, primary_namespace, secondary_namespace, key)
+	}
+
+	fn write(
+		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
+	) -> impl Future<Output = Result<(), io::Error>> + Send + 'static {
+		let delay = self.write_delay;
+		let fut = KVStore::write(&self.inner, primary_namespace, secondary_namespace, key, buf);
+		async move {
+			std::thread::sleep(delay);
+			fut.await
+		}
+	}
+
+	fn remove(
+		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, lazy: bool,
+	) -> impl Future<Output = Result<(), io::Error>> + Send + 'static {
+		KVStore::remove(&self.inner, primary_namespace, secondary_namespace, key, lazy)
+	}
+
+	fn list(
+		&self, primary_namespace: &str, secondary_namespace: &str,
+	) -> impl Future<Output = Result<Vec<String>, io::Error>> + Send + 'static {
+		KVStore::list(&self.inner, primary_namespace, secondary_namespace)
+	}
+}
+
+impl KVStoreSync for DelayedKVStore {
+	fn read(
+		&self, primary_namespace: &str, secondary_namespace: &str, key: &str,
+	) -> io::Result<Vec<u8>> {
+		KVStoreSync::read(&self.inner, primary_namespace, secondary_namespace, key)
+	}
+
+	fn write(
+		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
+	) -> io::Result<()> {
+		std::thread::sleep(self.write_delay);
+		KVStoreSync::write(&self.inner, primary_namespace, secondary_namespace, key, buf)
+	}
+
+	fn remove(
+		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, lazy: bool,
+	) -> io::Result<()> {
+		KVStoreSync::remove(&self.inner, primary_namespace, secondary_namespace, key, lazy)
+	}
+
+	fn list(&self, primary_namespace: &str, secondary_namespace: &str) -> io::Result<Vec<String>> {
+		KVStoreSync::list(&self.inner, primary_namespace, secondary_namespace)
+	}
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
 async fn channel_full_cycle() {
@@ -48,6 +122,115 @@ async fn channel_full_cycle() {
 	let (node_a, node_b) = setup_two_nodes(&chain_source, false, true, false);
 	do_channel_full_cycle(node_a, node_b, &bitcoind.client, &electrsd.client, false, true, false)
 		.await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn payment_latency() {
+	let (bitcoind, electrsd) = setup_bitcoind_and_electrsd();
+	let esplora_url = format!("http://{}", electrsd.esplora_url.as_ref().unwrap());
+
+	// Setup node_a with delayed SQLite store (150ms write delay)
+	println!("== Node A (with 150ms write delay) ==");
+	let config_a = random_config(true);
+	setup_builder!(builder_a, config_a.node_config);
+	builder_a.set_chain_source_esplora(
+		esplora_url.clone(),
+		Some(EsploraSyncConfig { background_sync_config: None }),
+	);
+	let sqlite_store_a = SqliteStore::new(
+		PathBuf::from(&config_a.node_config.storage_dir_path),
+		None,
+		None,
+	)
+	.unwrap();
+	let delayed_store = DelayedKVStore::new(sqlite_store_a, Duration::from_millis(150));
+	let node_a = builder_a.build_with_store(config_a.node_entropy.into(), delayed_store).unwrap();
+	node_a.start().unwrap();
+
+	// Setup node_b with regular SQLite store
+	println!("\n== Node B ==");
+	let config_b = random_config(true);
+	setup_builder!(builder_b, config_b.node_config);
+	builder_b.set_chain_source_esplora(
+		esplora_url,
+		Some(EsploraSyncConfig { background_sync_config: None }),
+	);
+	let node_b = builder_b.build(config_b.node_entropy.into()).unwrap();
+	node_b.start().unwrap();
+
+	let addr_a = node_a.onchain_payment().new_address().unwrap();
+	let addr_b = node_b.onchain_payment().new_address().unwrap();
+
+	let premine_amount_sat = 2_125_000;
+	premine_and_distribute_funds(
+		&bitcoind.client,
+		&electrsd.client,
+		vec![addr_a, addr_b],
+		Amount::from_sat(premine_amount_sat),
+	)
+	.await;
+	node_a.sync_wallets().unwrap();
+	node_b.sync_wallets().unwrap();
+
+	let funding_amount_sat = 2_080_000;
+	let push_msat = (funding_amount_sat / 2) * 1000;
+	node_a
+		.open_announced_channel(
+			node_b.node_id(),
+			node_b.listening_addresses().unwrap().first().unwrap().clone(),
+			funding_amount_sat,
+			Some(push_msat),
+			None,
+		)
+		.unwrap();
+
+	expect_channel_pending_event!(node_a, node_b.node_id());
+	expect_channel_pending_event!(node_b, node_a.node_id());
+
+	generate_blocks_and_wait(&bitcoind.client, &electrsd.client, 6).await;
+
+	node_a.sync_wallets().unwrap();
+	node_b.sync_wallets().unwrap();
+
+	expect_channel_ready_event!(node_a, node_b.node_id());
+	expect_channel_ready_event!(node_b, node_a.node_id());
+
+	let mut latencies_us: Vec<u128> = Vec::new();
+
+	for _ in 0..20 {
+		let invoice_amount_msat = 100_000;
+		let invoice_description =
+			Bolt11InvoiceDescription::Direct(Description::new(String::from("latency test")).unwrap());
+		let invoice = node_b
+			.bolt11_payment()
+			.receive(invoice_amount_msat, &invoice_description.clone().into(), 9217)
+			.unwrap();
+
+		let payment_start = Instant::now();
+		node_a.bolt11_payment().send(&invoice, None).unwrap();
+		expect_event!(node_a, PaymentSuccessful);
+		let latency_us = payment_start.elapsed().as_micros();
+
+		expect_event!(node_b, PaymentReceived);
+
+		latencies_us.push(latency_us);
+	}
+
+	let n = latencies_us.len() as f64;
+	let mean_us = latencies_us.iter().sum::<u128>() as f64 / n;
+	let variance =
+		latencies_us.iter().map(|&x| (x as f64 - mean_us).powi(2)).sum::<f64>() / (n - 1.0);
+	let std_error_us = variance.sqrt() / n.sqrt();
+	let margin_of_error_us = 1.96 * std_error_us;
+
+	println!(
+		"\nPayment latency (150ms write delay): {:.2} ms +/- {:.2} ms (95% CI, n=20)\n",
+		mean_us / 1000.0,
+		margin_of_error_us / 1000.0
+	);
+
+	node_a.stop().unwrap();
+	node_b.stop().unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
