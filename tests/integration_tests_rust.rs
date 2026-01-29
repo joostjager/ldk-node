@@ -11,6 +11,7 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -39,7 +40,10 @@ use ldk_node::payment::{
 use ldk_node::io::sqlite_store::SqliteStore;
 use ldk_node::{Builder, Event, NodeError};
 use lightning::io;
-use lightning::util::persist::{KVStore, KVStoreSync};
+use lightning::util::persist::{
+	KVStore, KVStoreSync, CHANNEL_MANAGER_PERSISTENCE_PRIMARY_NAMESPACE,
+	CHANNEL_MONITOR_PERSISTENCE_PRIMARY_NAMESPACE, CHANNEL_MONITOR_UPDATE_PERSISTENCE_PRIMARY_NAMESPACE,
+};
 use lightning::ln::channelmanager::PaymentId;
 use lightning::routing::gossip::{NodeAlias, NodeId};
 use lightning::routing::router::RouteParametersConfig;
@@ -47,15 +51,56 @@ use lightning_invoice::{Bolt11InvoiceDescription, Description};
 use lightning_types::payment::{PaymentHash, PaymentPreimage};
 use log::LevelFilter;
 
-/// A wrapper around SqliteStore that adds a configurable delay to write operations.
+/// Tracks persistence counts for channel manager and monitors.
+#[derive(Clone, Default)]
+struct PersistenceCounter {
+	channel_manager_count: Arc<AtomicU64>,
+	monitor_count: Arc<AtomicU64>,
+}
+
+impl PersistenceCounter {
+	fn new() -> Self {
+		Self { channel_manager_count: Arc::new(AtomicU64::new(0)), monitor_count: Arc::new(AtomicU64::new(0)) }
+	}
+
+	fn channel_manager_count(&self) -> u64 {
+		self.channel_manager_count.load(Ordering::Relaxed)
+	}
+
+	fn monitor_count(&self) -> u64 {
+		self.monitor_count.load(Ordering::Relaxed)
+	}
+
+	fn reset(&self) {
+		self.channel_manager_count.store(0, Ordering::Relaxed);
+		self.monitor_count.store(0, Ordering::Relaxed);
+	}
+}
+
+/// A wrapper around SqliteStore that adds a configurable delay to write operations
+/// and tracks persistence counts.
 struct DelayedKVStore {
 	inner: SqliteStore,
 	write_delay: Duration,
+	counter: PersistenceCounter,
 }
 
 impl DelayedKVStore {
-	fn new(inner: SqliteStore, write_delay: Duration) -> Self {
-		Self { inner, write_delay }
+	fn new(inner: SqliteStore, write_delay: Duration, counter: PersistenceCounter) -> Self {
+		Self { inner, write_delay, counter }
+	}
+
+	fn track_persist(&self, primary_namespace: &str, _secondary_namespace: &str, _key: &str) {
+		// Track channel manager persists
+		if primary_namespace == CHANNEL_MANAGER_PERSISTENCE_PRIMARY_NAMESPACE {
+			self.counter.channel_manager_count.fetch_add(1, Ordering::Relaxed);
+		}
+		// Track monitor persists (full monitors and monitor updates)
+		if primary_namespace == CHANNEL_MONITOR_PERSISTENCE_PRIMARY_NAMESPACE
+			|| primary_namespace == CHANNEL_MONITOR_UPDATE_PERSISTENCE_PRIMARY_NAMESPACE
+		{
+			self.counter.monitor_count.fetch_add(1, Ordering::Relaxed);
+		}
 	}
 }
 
@@ -69,6 +114,7 @@ impl KVStore for DelayedKVStore {
 	fn write(
 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
 	) -> impl Future<Output = Result<(), io::Error>> + Send + 'static {
+		self.track_persist(primary_namespace, secondary_namespace, key);
 		let delay = self.write_delay;
 		let fut = KVStore::write(&self.inner, primary_namespace, secondary_namespace, key, buf);
 		async move {
@@ -100,6 +146,7 @@ impl KVStoreSync for DelayedKVStore {
 	fn write(
 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
 	) -> io::Result<()> {
+		self.track_persist(primary_namespace, secondary_namespace, key);
 		std::thread::sleep(self.write_delay);
 		KVStoreSync::write(&self.inner, primary_namespace, secondary_namespace, key, buf)
 	}
@@ -143,8 +190,11 @@ async fn payment_latency() {
 		None,
 	)
 	.unwrap();
-	let delayed_store = DelayedKVStore::new(sqlite_store_a, Duration::from_millis(150));
-	let node_a = builder_a.build_with_store(config_a.node_entropy.into(), delayed_store).unwrap();
+	let persist_counter = PersistenceCounter::new();
+	let delayed_store = DelayedKVStore::new(sqlite_store_a, Duration::from_millis(150), persist_counter.clone());
+	let node_a = builder_a
+		.build_with_store(config_a.node_entropy.into(), delayed_store)
+		.unwrap();
 	node_a.start().unwrap();
 
 	// Setup node_b with regular SQLite store
@@ -196,6 +246,11 @@ async fn payment_latency() {
 	expect_channel_ready_event!(node_b, node_a.node_id());
 
 	let mut latencies_us: Vec<u128> = Vec::new();
+	let mut cm_persist_counts: Vec<u64> = Vec::new();
+	let mut monitor_persist_counts: Vec<u64> = Vec::new();
+
+	// Reset counters before starting payment loop to ignore setup persists
+	persist_counter.reset();
 
 	for _ in 0..20 {
 		let invoice_amount_msat = 100_000;
@@ -206,14 +261,20 @@ async fn payment_latency() {
 			.receive(invoice_amount_msat, &invoice_description.clone().into(), 9217)
 			.unwrap();
 
+		let cm_before = persist_counter.channel_manager_count();
+		let monitor_before = persist_counter.monitor_count();
 		let payment_start = Instant::now();
 		node_a.bolt11_payment().send(&invoice, None).unwrap();
 		expect_event!(node_a, PaymentSuccessful);
 		let latency_us = payment_start.elapsed().as_micros();
+		let cm_after = persist_counter.channel_manager_count();
+		let monitor_after = persist_counter.monitor_count();
 
 		expect_event!(node_b, PaymentReceived);
 
 		latencies_us.push(latency_us);
+		cm_persist_counts.push(cm_after - cm_before);
+		monitor_persist_counts.push(monitor_after - monitor_before);
 	}
 
 	let n = latencies_us.len() as f64;
@@ -223,10 +284,23 @@ async fn payment_latency() {
 	let std_error_us = variance.sqrt() / n.sqrt();
 	let margin_of_error_us = 1.96 * std_error_us;
 
+	let total_cm_persists: u64 = cm_persist_counts.iter().sum();
+	let mean_cm_persists = total_cm_persists as f64 / n;
+	let total_monitor_persists: u64 = monitor_persist_counts.iter().sum();
+	let mean_monitor_persists = total_monitor_persists as f64 / n;
+
 	println!(
-		"\nPayment latency (150ms write delay): {:.2} ms +/- {:.2} ms (95% CI, n=20)\n",
+		"\nPayment latency (150ms write delay): {:.2} ms +/- {:.2} ms (95% CI, n=20)",
 		mean_us / 1000.0,
 		margin_of_error_us / 1000.0
+	);
+	println!(
+		"Channel manager persists per payment: {:.1} (total: {})",
+		mean_cm_persists, total_cm_persists
+	);
+	println!(
+		"Monitor persists per payment: {:.1} (total: {})\n",
+		mean_monitor_persists, total_monitor_persists
 	);
 
 	node_a.stop().unwrap();
