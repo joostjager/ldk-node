@@ -11,7 +11,7 @@ use std::collections::HashSet;
 use std::future::Future;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -59,15 +59,20 @@ enum DelayMode {
 	Never,
 	ManagerOnly,
 	MonitorsOnly,
+	/// Always delay monitors; delay manager only if monitors were written since last manager write.
+	MonitorsThenManager,
 }
 
-const DELAY_MODE: DelayMode = DelayMode::Always;
+const DELAY_MODE: DelayMode = DelayMode::MonitorsThenManager;
 
 /// Tracks persistence counts for channel manager and monitors.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct PersistenceCounter {
 	channel_manager_count: Arc<AtomicU64>,
 	monitor_count: Arc<AtomicU64>,
+	/// Set to true when monitors are written, cleared when manager is written.
+	/// Used by ManagerAfterMonitors mode.
+	monitors_dirty: Arc<AtomicBool>,
 }
 
 impl PersistenceCounter {
@@ -75,6 +80,7 @@ impl PersistenceCounter {
 		Self {
 			channel_manager_count: Arc::new(AtomicU64::new(0)),
 			monitor_count: Arc::new(AtomicU64::new(0)),
+			monitors_dirty: Arc::new(AtomicBool::new(false)),
 		}
 	}
 
@@ -106,15 +112,16 @@ impl DelayedKVStore {
 	}
 
 	fn track_persist(&self, primary_namespace: &str, _secondary_namespace: &str, _key: &str) {
-		// Track channel manager persists
-		if primary_namespace == CHANNEL_MANAGER_PERSISTENCE_PRIMARY_NAMESPACE {
+		let is_manager = primary_namespace == CHANNEL_MANAGER_PERSISTENCE_PRIMARY_NAMESPACE;
+		let is_monitor = primary_namespace == CHANNEL_MONITOR_PERSISTENCE_PRIMARY_NAMESPACE
+			|| primary_namespace == CHANNEL_MONITOR_UPDATE_PERSISTENCE_PRIMARY_NAMESPACE;
+
+		if is_manager {
 			self.counter.channel_manager_count.fetch_add(1, Ordering::Relaxed);
 		}
-		// Track monitor persists (full monitors and monitor updates)
-		if primary_namespace == CHANNEL_MONITOR_PERSISTENCE_PRIMARY_NAMESPACE
-			|| primary_namespace == CHANNEL_MONITOR_UPDATE_PERSISTENCE_PRIMARY_NAMESPACE
-		{
+		if is_monitor {
 			self.counter.monitor_count.fetch_add(1, Ordering::Relaxed);
+			self.counter.monitors_dirty.store(true, Ordering::Relaxed);
 		}
 	}
 
@@ -128,6 +135,11 @@ impl DelayedKVStore {
 			DelayMode::Never => false,
 			DelayMode::ManagerOnly => is_manager,
 			DelayMode::MonitorsOnly => is_monitor,
+			DelayMode::MonitorsThenManager => {
+				// Always delay monitors; delay manager only if monitors were written since last manager write
+				is_monitor
+					|| (is_manager && self.counter.monitors_dirty.swap(false, Ordering::Relaxed))
+			},
 		}
 	}
 }
