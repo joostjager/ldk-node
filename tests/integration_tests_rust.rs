@@ -32,24 +32,36 @@ use common::{
 };
 use ldk_node::config::{AsyncPaymentsRole, EsploraSyncConfig};
 use ldk_node::entropy::NodeEntropy;
+use ldk_node::io::sqlite_store::SqliteStore;
 use ldk_node::liquidity::LSPS2ServiceConfig;
 use ldk_node::payment::{
 	ConfirmationStatus, PaymentDetails, PaymentDirection, PaymentKind, PaymentStatus,
 	UnifiedPaymentResult,
 };
-use ldk_node::io::sqlite_store::SqliteStore;
 use ldk_node::{Builder, Event, NodeError};
 use lightning::io;
-use lightning::util::persist::{
-	KVStore, KVStoreSync, CHANNEL_MANAGER_PERSISTENCE_PRIMARY_NAMESPACE,
-	CHANNEL_MONITOR_PERSISTENCE_PRIMARY_NAMESPACE, CHANNEL_MONITOR_UPDATE_PERSISTENCE_PRIMARY_NAMESPACE,
-};
 use lightning::ln::channelmanager::PaymentId;
 use lightning::routing::gossip::{NodeAlias, NodeId};
 use lightning::routing::router::RouteParametersConfig;
+use lightning::util::persist::{
+	KVStore, KVStoreSync, CHANNEL_MANAGER_PERSISTENCE_PRIMARY_NAMESPACE,
+	CHANNEL_MONITOR_PERSISTENCE_PRIMARY_NAMESPACE,
+	CHANNEL_MONITOR_UPDATE_PERSISTENCE_PRIMARY_NAMESPACE,
+};
 use lightning_invoice::{Bolt11InvoiceDescription, Description};
 use lightning_types::payment::{PaymentHash, PaymentPreimage};
 use log::LevelFilter;
+
+/// Controls which persistence operations get delayed.
+#[derive(Clone, Copy)]
+enum DelayMode {
+	Always,
+	Never,
+	ManagerOnly,
+	MonitorsOnly,
+}
+
+const DELAY_MODE: DelayMode = DelayMode::Always;
 
 /// Tracks persistence counts for channel manager and monitors.
 #[derive(Clone, Default)]
@@ -60,7 +72,10 @@ struct PersistenceCounter {
 
 impl PersistenceCounter {
 	fn new() -> Self {
-		Self { channel_manager_count: Arc::new(AtomicU64::new(0)), monitor_count: Arc::new(AtomicU64::new(0)) }
+		Self {
+			channel_manager_count: Arc::new(AtomicU64::new(0)),
+			monitor_count: Arc::new(AtomicU64::new(0)),
+		}
 	}
 
 	fn channel_manager_count(&self) -> u64 {
@@ -102,6 +117,19 @@ impl DelayedKVStore {
 			self.counter.monitor_count.fetch_add(1, Ordering::Relaxed);
 		}
 	}
+
+	fn should_delay(&self, primary_namespace: &str) -> bool {
+		let is_manager = primary_namespace == CHANNEL_MANAGER_PERSISTENCE_PRIMARY_NAMESPACE;
+		let is_monitor = primary_namespace == CHANNEL_MONITOR_PERSISTENCE_PRIMARY_NAMESPACE
+			|| primary_namespace == CHANNEL_MONITOR_UPDATE_PERSISTENCE_PRIMARY_NAMESPACE;
+
+		match DELAY_MODE {
+			DelayMode::Always => true,
+			DelayMode::Never => false,
+			DelayMode::ManagerOnly => is_manager,
+			DelayMode::MonitorsOnly => is_monitor,
+		}
+	}
 }
 
 impl KVStore for DelayedKVStore {
@@ -115,7 +143,8 @@ impl KVStore for DelayedKVStore {
 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
 	) -> impl Future<Output = Result<(), io::Error>> + Send + 'static {
 		self.track_persist(primary_namespace, secondary_namespace, key);
-		let delay = self.write_delay;
+		let delay =
+			if self.should_delay(primary_namespace) { self.write_delay } else { Duration::ZERO };
 		let fut = KVStore::write(&self.inner, primary_namespace, secondary_namespace, key, buf);
 		async move {
 			std::thread::sleep(delay);
@@ -147,7 +176,9 @@ impl KVStoreSync for DelayedKVStore {
 		&self, primary_namespace: &str, secondary_namespace: &str, key: &str, buf: Vec<u8>,
 	) -> io::Result<()> {
 		self.track_persist(primary_namespace, secondary_namespace, key);
-		std::thread::sleep(self.write_delay);
+		if self.should_delay(primary_namespace) {
+			std::thread::sleep(self.write_delay);
+		}
 		KVStoreSync::write(&self.inner, primary_namespace, secondary_namespace, key, buf)
 	}
 
@@ -184,17 +215,13 @@ async fn payment_latency() {
 		esplora_url.clone(),
 		Some(EsploraSyncConfig { background_sync_config: None }),
 	);
-	let sqlite_store_a = SqliteStore::new(
-		PathBuf::from(&config_a.node_config.storage_dir_path),
-		None,
-		None,
-	)
-	.unwrap();
+	let sqlite_store_a =
+		SqliteStore::new(PathBuf::from(&config_a.node_config.storage_dir_path), None, None)
+			.unwrap();
 	let persist_counter = PersistenceCounter::new();
-	let delayed_store = DelayedKVStore::new(sqlite_store_a, Duration::from_millis(150), persist_counter.clone());
-	let node_a = builder_a
-		.build_with_store(config_a.node_entropy.into(), delayed_store)
-		.unwrap();
+	let delayed_store =
+		DelayedKVStore::new(sqlite_store_a, Duration::from_millis(150), persist_counter.clone());
+	let node_a = builder_a.build_with_store(config_a.node_entropy.into(), delayed_store).unwrap();
 	node_a.start().unwrap();
 
 	// Setup node_b with regular SQLite store
@@ -254,8 +281,9 @@ async fn payment_latency() {
 
 	for _ in 0..20 {
 		let invoice_amount_msat = 100_000;
-		let invoice_description =
-			Bolt11InvoiceDescription::Direct(Description::new(String::from("latency test")).unwrap());
+		let invoice_description = Bolt11InvoiceDescription::Direct(
+			Description::new(String::from("latency test")).unwrap(),
+		);
 		let invoice = node_b
 			.bolt11_payment()
 			.receive(invoice_amount_msat, &invoice_description.clone().into(), 9217)
