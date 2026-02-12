@@ -23,7 +23,7 @@ use bitcoin::Network;
 use lightning::ln::msgs::DecodeError;
 use lightning::routing::gossip::NetworkGraph;
 use lightning::routing::scoring::{
-	ChannelLiquidities, ProbabilisticScorer, ProbabilisticScoringDecayParameters,
+	ChannelLiquiditiesX, ProbabilisticScorer, ProbabilisticScoringDecayParameters,
 };
 use lightning::util::persist::{
 	KVStore, KVStoreSync, KVSTORE_NAMESPACE_KEY_ALPHABET, KVSTORE_NAMESPACE_KEY_MAX_LEN,
@@ -138,7 +138,7 @@ where
 /// Read previously persisted external pathfinding scores from the cache.
 pub(crate) async fn read_external_pathfinding_scores_from_cache<L: Deref>(
 	kv_store: &DynStore, logger: L,
-) -> Result<ChannelLiquidities, std::io::Error>
+) -> Result<ChannelLiquiditiesX, std::io::Error>
 where
 	L::Target: LdkLogger,
 {
@@ -149,7 +149,7 @@ where
 		EXTERNAL_PATHFINDING_SCORES_CACHE_KEY,
 	)
 	.await?;
-	ChannelLiquidities::read(&mut &*reader).map_err(|e| {
+	ChannelLiquiditiesX::read(&mut &*reader).map_err(|e| {
 		log_error!(logger, "Failed to deserialize scorer: {}", e);
 		std::io::Error::new(std::io::ErrorKind::InvalidData, "Failed to deserialize Scorer")
 	})
@@ -157,7 +157,7 @@ where
 
 /// Persist external pathfinding scores to the cache.
 pub(crate) async fn write_external_pathfinding_scores_to_cache<L: Deref>(
-	kv_store: &DynStore, data: &ChannelLiquidities, logger: L,
+	kv_store: &DynStore, data: &ChannelLiquiditiesX, logger: L,
 ) -> Result<(), Error>
 where
 	L::Target: LdkLogger,

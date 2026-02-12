@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::SystemTime;
 
-use lightning::routing::scoring::ChannelLiquidities;
+use lightning::routing::scoring::ChannelLiquiditiesX;
 use lightning::util::ser::Readable;
 use lightning::{log_error, log_info, log_trace};
 
@@ -74,7 +74,7 @@ async fn sync_external_scores(
 		return;
 	}
 	let mut reader = response.as_bytes();
-	match ChannelLiquidities::read(&mut reader) {
+	match ChannelLiquiditiesX::read(&mut reader) {
 		Ok(liquidities) => {
 			if let Err(e) =
 				write_external_pathfinding_scores_to_cache(&*kv_store, &liquidities, logger).await
