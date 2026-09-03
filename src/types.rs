@@ -76,6 +76,17 @@ pub(crate) trait DynStoreTrait: Send + Sync {
 			dyn Future<Output = Result<PaginatedListResponse, bitcoin::io::Error>> + Send + 'static,
 		>,
 	>;
+	fn commit_async(
+		&self,
+	) -> Pin<Box<dyn Future<Output = Result<(), bitcoin::io::Error>> + Send + 'static>>;
+	fn commit_generation(&self) -> u64;
+	fn wait_for_commit_async(
+		&self, after_generation: u64,
+	) -> Pin<Box<dyn Future<Output = Result<(), bitcoin::io::Error>> + Send + 'static>>;
+	fn begin_operation(&self);
+	fn end_operation(&self);
+	fn begin_atomic_commit(&self);
+	fn end_atomic_commit(&self);
 }
 
 impl<'a> KVStore for dyn DynStoreTrait + 'a {
@@ -101,6 +112,18 @@ impl<'a> KVStore for dyn DynStoreTrait + 'a {
 		&self, primary_namespace: &str, secondary_namespace: &str,
 	) -> impl Future<Output = Result<Vec<String>, bitcoin::io::Error>> + Send + 'static {
 		DynStoreTrait::list_async(self, primary_namespace, secondary_namespace)
+	}
+
+	fn commit(&self) -> impl Future<Output = Result<(), bitcoin::io::Error>> + Send + 'static {
+		DynStoreTrait::commit_async(self)
+	}
+
+	fn begin_atomic_commit(&self) {
+		DynStoreTrait::begin_atomic_commit(self)
+	}
+
+	fn end_atomic_commit(&self) {
+		DynStoreTrait::end_atomic_commit(self)
 	}
 }
 
@@ -149,6 +172,18 @@ impl KVStore for DynStoreRef {
 		&self, primary_namespace: &str, secondary_namespace: &str,
 	) -> impl Future<Output = Result<Vec<String>, bitcoin::io::Error>> + Send + 'static {
 		DynStoreTrait::list_async(&*self.0, primary_namespace, secondary_namespace)
+	}
+
+	fn commit(&self) -> impl Future<Output = Result<(), bitcoin::io::Error>> + Send + 'static {
+		DynStoreTrait::commit_async(&*self.0)
+	}
+
+	fn begin_atomic_commit(&self) {
+		DynStoreTrait::begin_atomic_commit(&*self.0)
+	}
+
+	fn end_atomic_commit(&self) {
+		DynStoreTrait::end_atomic_commit(&*self.0)
 	}
 }
 
@@ -206,6 +241,30 @@ impl<T: PaginatedKVStore + Send + Sync> DynStoreTrait for DynStoreWrapper<T> {
 			page_token,
 		))
 	}
+
+	fn commit_async(
+		&self,
+	) -> Pin<Box<dyn Future<Output = Result<(), bitcoin::io::Error>> + Send + 'static>> {
+		Box::pin(KVStore::commit(&self.0))
+	}
+
+	fn commit_generation(&self) -> u64 {
+		u64::MAX
+	}
+
+	fn wait_for_commit_async(
+		&self, _after_generation: u64,
+	) -> Pin<Box<dyn Future<Output = Result<(), bitcoin::io::Error>> + Send + 'static>> {
+		Box::pin(async { Ok(()) })
+	}
+
+	fn begin_operation(&self) {}
+
+	fn end_operation(&self) {}
+
+	fn begin_atomic_commit(&self) {}
+
+	fn end_atomic_commit(&self) {}
 }
 
 pub(crate) type AsyncPersister = MonitorUpdatingPersisterAsync<

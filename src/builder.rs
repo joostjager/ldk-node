@@ -75,6 +75,7 @@ use crate::logger::{log_error, LdkLogger, LogLevel, LogWriter, Logger};
 use crate::message_handler::NodeCustomMessageHandler;
 use crate::payment::asynchronous::om_mailbox::OnionMessageMailbox;
 use crate::peer_store::PeerStore;
+use crate::persistence::AtomicDynStoreWrapper;
 use crate::probing::{
 	HighDegreeStrategy, Prober, ProbingConfig, ProbingStrategy, ProbingStrategyKind,
 	RandomWalkStrategy,
@@ -677,7 +678,13 @@ impl NodeBuilder {
 			log_error!(logger, "Failed to setup Sqlite store: {}", e);
 			BuildError::KVStoreSetupFailed
 		})?;
-		self.build_with_store_and_logger(node_entropy, kv_store, logger)
+		let runtime = self.setup_runtime(&logger)?;
+		self.build_with_dyn_store_runtime_and_logger(
+			node_entropy,
+			Arc::new(AtomicDynStoreWrapper::new(kv_store)),
+			runtime,
+			logger,
+		)
 	}
 
 	/// Builds a [`Node`] instance with a [PostgreSQL] backend and according to the options
@@ -891,9 +898,19 @@ impl NodeBuilder {
 	fn build_with_store_runtime_and_logger<S: PaginatedKVStore + Send + Sync + 'static>(
 		&self, node_entropy: NodeEntropy, kv_store: S, runtime: Arc<Runtime>, logger: Arc<Logger>,
 	) -> Result<Node, BuildError> {
-		let seed_bytes = node_entropy.to_seed_bytes();
-		let config = Arc::new(self.config.clone());
+		self.build_with_dyn_store_runtime_and_logger(
+			node_entropy,
+			Arc::new(DynStoreWrapper(kv_store)),
+			runtime,
+			logger,
+		)
+	}
 
+	fn build_with_dyn_store_runtime_and_logger(
+		&self, node_entropy: NodeEntropy, kv_store: Arc<DynStore>, runtime: Arc<Runtime>,
+		logger: Arc<Logger>,
+	) -> Result<Node, BuildError> {
+		let config = Arc::new(self.config.clone());
 		build_with_store_internal(
 			config,
 			self.chain_data_source_config.as_ref(),
@@ -902,10 +919,10 @@ impl NodeBuilder {
 			self.pathfinding_scores_sync_config.as_ref(),
 			self.probing_config.as_ref(),
 			self.async_payments_role,
-			seed_bytes,
+			node_entropy.to_seed_bytes(),
 			runtime,
 			logger,
-			Arc::new(DynStoreWrapper(kv_store)),
+			kv_store,
 		)
 	}
 }

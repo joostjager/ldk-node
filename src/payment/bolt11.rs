@@ -36,8 +36,9 @@ use crate::payment::store::{
 	PaymentStatus,
 };
 use crate::peer_store::{PeerInfo, PeerStore};
+use crate::persistence::PersistenceOperationGuard;
 use crate::runtime::Runtime;
-use crate::types::{ChannelManager, PaymentStore};
+use crate::types::{ChannelManager, DynStore, PaymentStore};
 
 #[cfg(not(feature = "uniffi"))]
 type Bolt11Invoice = LdkBolt11Invoice;
@@ -72,6 +73,7 @@ pub struct Bolt11Payment {
 	connection_manager: Arc<ConnectionManager<Arc<Logger>>>,
 	liquidity_source: Arc<LiquiditySource<Arc<Logger>>>,
 	payment_store: Arc<PaymentStore>,
+	kv_store: Arc<DynStore>,
 	peer_store: Arc<PeerStore<Arc<Logger>>>,
 	config: Arc<Config>,
 	is_running: Arc<RwLock<bool>>,
@@ -83,7 +85,7 @@ impl Bolt11Payment {
 		runtime: Arc<Runtime>, channel_manager: Arc<ChannelManager>,
 		connection_manager: Arc<ConnectionManager<Arc<Logger>>>,
 		liquidity_source: Arc<LiquiditySource<Arc<Logger>>>, payment_store: Arc<PaymentStore>,
-		peer_store: Arc<PeerStore<Arc<Logger>>>, config: Arc<Config>,
+		kv_store: Arc<DynStore>, peer_store: Arc<PeerStore<Arc<Logger>>>, config: Arc<Config>,
 		is_running: Arc<RwLock<bool>>, logger: Arc<Logger>,
 	) -> Self {
 		Self {
@@ -92,6 +94,7 @@ impl Bolt11Payment {
 			connection_manager,
 			liquidity_source,
 			payment_store,
+			kv_store,
 			peer_store,
 			config,
 			is_running,
@@ -265,6 +268,13 @@ mod tests {
 }
 
 impl Bolt11Payment {
+	fn wait_for_persistence(&self, operation: PersistenceOperationGuard) -> Result<(), Error> {
+		self.runtime.block_on(operation.wait_for_commit()).map_err(|e| {
+			log_error!(self.logger, "Failed to commit payment state: {e}");
+			Error::PersistenceFailed
+		})
+	}
+
 	fn send_internal(
 		&self, invoice: &LdkBolt11Invoice, amount_msat: Option<u64>,
 		route_parameters: Option<RouteParametersConfig>,
@@ -303,7 +313,8 @@ impl Bolt11Payment {
 			declared_total_mpp_value_msat_override,
 			..Default::default()
 		};
-		match self.channel_manager.pay_for_bolt11_invoice(
+		let operation = PersistenceOperationGuard::new(Arc::clone(&self.kv_store));
+		let result = match self.channel_manager.pay_for_bolt11_invoice(
 			invoice,
 			payment_id,
 			amount_msat,
@@ -334,7 +345,6 @@ impl Bolt11Payment {
 				);
 
 				self.runtime.block_on(self.payment_store.insert(payment))?;
-
 				Ok(payment_id)
 			},
 			Err(Bolt11PaymentError::InvalidAmount) => {
@@ -366,7 +376,11 @@ impl Bolt11Payment {
 					},
 				}
 			},
+		};
+		if result.is_ok() || matches!(&result, Err(Error::PaymentSendingFailed)) {
+			self.wait_for_persistence(operation)?;
 		}
+		result
 	}
 }
 

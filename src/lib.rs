@@ -101,6 +101,7 @@ pub mod logger;
 mod message_handler;
 pub mod payment;
 mod peer_store;
+mod persistence;
 pub mod probing;
 mod runtime;
 mod scoring;
@@ -1011,6 +1012,7 @@ impl Node {
 			Arc::clone(&self.connection_manager),
 			Arc::clone(&self.liquidity_source),
 			Arc::clone(&self.payment_store),
+			Arc::clone(&self.kv_store),
 			Arc::clone(&self.peer_store),
 			Arc::clone(&self.config),
 			Arc::clone(&self.is_running),
@@ -1029,6 +1031,7 @@ impl Node {
 			Arc::clone(&self.connection_manager),
 			Arc::clone(&self.liquidity_source),
 			Arc::clone(&self.payment_store),
+			Arc::clone(&self.kv_store),
 			Arc::clone(&self.peer_store),
 			Arc::clone(&self.config),
 			Arc::clone(&self.is_running),

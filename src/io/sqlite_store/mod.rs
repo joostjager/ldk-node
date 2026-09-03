@@ -21,6 +21,7 @@ use lightning_types::string::PrintableString;
 use rusqlite::{named_params, Connection};
 
 use crate::io::utils::check_namespace_key_validity;
+use crate::persistence::{AtomicBatchStore, StoreOperation};
 
 mod migrations;
 
@@ -204,6 +205,23 @@ impl PaginatedKVStore for SqliteStore {
 	}
 }
 
+impl AtomicBatchStore for SqliteStore {
+	fn write_batch(
+		&self, operations: Vec<StoreOperation>,
+	) -> std::pin::Pin<Box<dyn Future<Output = Result<(), io::Error>> + Send + 'static>> {
+		let inner = Arc::clone(&self.inner);
+		let fut = tokio::task::spawn_blocking(move || inner.write_batch_internal(operations));
+		Box::pin(async move {
+			fut.await.unwrap_or_else(|e| {
+				Err(io::Error::new(
+					io::ErrorKind::Other,
+					format!("Failed atomic batch due to join error: {e}"),
+				))
+			})
+		})
+	}
+}
+
 impl MigratableKVStore for SqliteStore {
 	fn list_all_keys(
 		&self,
@@ -381,6 +399,84 @@ impl SqliteStoreInner {
 				},
 			})?;
 		Ok(res)
+	}
+
+	fn write_batch_internal(&self, operations: Vec<StoreOperation>) -> io::Result<()> {
+		for operation in &operations {
+			let (primary_namespace, secondary_namespace, key, operation_name) = match operation {
+				StoreOperation::Write { primary_namespace, secondary_namespace, key, .. } => {
+					(primary_namespace, secondary_namespace, key, "write")
+				},
+				StoreOperation::Remove { primary_namespace, secondary_namespace, key } => {
+					(primary_namespace, secondary_namespace, key, "remove")
+				},
+			};
+			check_namespace_key_validity(
+				primary_namespace,
+				secondary_namespace,
+				Some(key),
+				operation_name,
+			)?;
+		}
+
+		let mut connection = self.connection.lock().expect("lock");
+		let transaction = connection.transaction().map_err(|e| {
+			io::Error::new(io::ErrorKind::Other, format!("Failed to start atomic batch: {e}"))
+		})?;
+		for operation in operations {
+			match operation {
+				StoreOperation::Write { primary_namespace, secondary_namespace, key, value } => {
+					let sort_order = self.next_sort_order.fetch_add(1, Ordering::Relaxed);
+					let sql = format!(
+						"INSERT INTO {} (primary_namespace, secondary_namespace, key, value, sort_order) \
+						 VALUES (:primary_namespace, :secondary_namespace, :key, :value, :sort_order) \
+						 ON CONFLICT(primary_namespace, secondary_namespace, key) DO UPDATE SET value = excluded.value;",
+						self.kv_table_name
+					);
+					transaction
+						.execute(
+							&sql,
+							named_params! {
+								":primary_namespace": primary_namespace,
+								":secondary_namespace": secondary_namespace,
+								":key": key,
+								":value": value,
+								":sort_order": sort_order,
+							},
+						)
+						.map_err(|e| {
+							io::Error::new(
+								io::ErrorKind::Other,
+								format!("Failed to write atomic batch item: {e}"),
+							)
+						})?;
+				},
+				StoreOperation::Remove { primary_namespace, secondary_namespace, key } => {
+					let sql = format!(
+						"DELETE FROM {} WHERE primary_namespace=:primary_namespace AND secondary_namespace=:secondary_namespace AND key=:key;",
+						self.kv_table_name
+					);
+					transaction
+						.execute(
+							&sql,
+							named_params! {
+								":primary_namespace": primary_namespace,
+								":secondary_namespace": secondary_namespace,
+								":key": key,
+							},
+						)
+						.map_err(|e| {
+							io::Error::new(
+								io::ErrorKind::Other,
+								format!("Failed to remove atomic batch item: {e}"),
+							)
+						})?;
+				},
+			}
+		}
+		transaction.commit().map_err(|e| {
+			io::Error::new(io::ErrorKind::Other, format!("Failed to commit atomic batch: {e}"))
+		})
 	}
 
 	fn write_internal(
@@ -690,6 +786,8 @@ mod tests {
 	use crate::io::test_utils::{
 		do_read_write_remove_list_persist, do_test_store, random_storage_path,
 	};
+	use crate::persistence::AtomicDynStoreWrapper;
+	use crate::types::DynStoreTrait;
 
 	impl Drop for SqliteStore {
 		fn drop(&mut self) {
@@ -711,6 +809,36 @@ mod tests {
 		)
 		.unwrap();
 		do_read_write_remove_list_persist(&store).await;
+	}
+
+	#[tokio::test]
+	async fn atomic_wrapper_stages_writes_until_commit() {
+		let mut temp_path = random_storage_path();
+		temp_path.push("atomic_wrapper_stages_writes_until_commit");
+		let store = AtomicDynStoreWrapper::new(
+			SqliteStore::new(
+				temp_path,
+				Some("test_db".to_string()),
+				Some("test_table".to_string()),
+			)
+			.unwrap(),
+		);
+
+		DynStoreTrait::begin_operation(&store);
+		DynStoreTrait::write_async(&store, "ns", "", "first", vec![1]).await.unwrap();
+		DynStoreTrait::write_async(&store, "ns", "", "second", vec![2]).await.unwrap();
+		DynStoreTrait::end_operation(&store);
+		assert_eq!(
+			DynStoreTrait::read_async(&store, "ns", "", "first").await.unwrap_err().kind(),
+			io::ErrorKind::NotFound
+		);
+
+		DynStoreTrait::begin_atomic_commit(&store);
+		DynStoreTrait::commit_async(&store).await.unwrap();
+		DynStoreTrait::end_atomic_commit(&store);
+
+		assert_eq!(DynStoreTrait::read_async(&store, "ns", "", "first").await.unwrap(), vec![1]);
+		assert_eq!(DynStoreTrait::read_async(&store, "ns", "", "second").await.unwrap(), vec![2]);
 	}
 
 	#[tokio::test(flavor = "multi_thread")]
